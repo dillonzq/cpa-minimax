@@ -1,3 +1,32 @@
+# v0.2.0
+
+Fix the plugin display name and improve protocol conversion processing.
+Requires **CLIProxyAPI v8.0.0 or later**.
+
+## Fixes
+
+- Register the human-readable plugin name as `MiniMax` so management interfaces
+  display the brand name. The plugin ID remains `cpa-minimax`, and the provider
+  ID and default model prefix remain `minimax`.
+
+## Improvements
+
+- Upgrade protocol conversion to
+  [apix v0.2.0](https://github.com/dillonzq/apix/tree/v0.2.0), improving request
+  inspection, JSON field edits, inline-media Base64 handling, and Responses
+  stream processing. The upgrade also fixes SSE framing for edited multi-line
+  JSON payloads.
+- Edited JSON may retain its original field order, whitespace, and number
+  spelling instead of being re-encoded with sorted keys. JSON meaning is
+  preserved; integrations comparing exact payload bytes should compare parsed
+  JSON instead.
+
+## Upgrade
+
+Download `cpa-minimax_0.2.0_<os>_<arch>.zip` for your CPA host and verify it
+against `checksums.txt`. Stop CPA before replacing the plugin library, then
+restart CPA. No configuration changes are required.
+
 # v0.1.2
 
 Fix M Plan usage responses that provide percentages instead of request counts.
