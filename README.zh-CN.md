@@ -25,7 +25,7 @@
 
 [CLIProxyAPI](https://help.router-for.me/plugin/development)（CPA）的原生 Go 插件，通过同一个 provider 接入 MiniMax 订阅 key 和按量付费 key。
 
-- 支持 Chat Completions、Messages、Responses、Gemini 客户端及流式输出，协议转换使用 [apix](https://github.com/dillonzq/apix/tree/v0.1.0)。
+- 支持 Chat Completions、Messages、Responses、Gemini 客户端及流式输出，协议转换使用 [apix](https://github.com/dillonzq/apix/tree/v0.2.0)。
 - 国际站和中国大陆站凭证共用一个池，支持全局及单 key 上游地址配置。
 - 通过 CPA 优先级先使用订阅额度，按错误冷却凭证，并接入 CPA 原生额度查询。
 - 内置 MiniMax-M3.1-Flash 和 MiniMax-M3，支持模型发现、思考控制及 Claude 格式 token 计数。

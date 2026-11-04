@@ -4,7 +4,7 @@
 
 [插件接入](#插件接入) · [原生兼容](#原生请求的上游兼容规则) · [请求策略](#minimax-请求策略) · [跨协议能力](#跨协议能力) · [思考后缀](#思考后缀) · [流式与错误](#sse-与错误处理)
 
-请求、普通响应和流式响应使用固定版本的 [apix v0.1.0](https://github.com/dillonzq/apix/tree/v0.1.0)。客户端可使用 Chat Completions、Messages、Responses 或 Gemini GenerateContent；MiniMax 上游提供 Chat Completions、Messages 和 Responses。详细字段映射和限制见[库的 LLM 协议说明](https://github.com/dillonzq/apix/blob/v0.1.0/docs/protocols/llm.zh-CN.md)和 [Gemini 协议说明](https://github.com/dillonzq/apix/blob/v0.1.0/docs/protocols/gemini.zh-CN.md)。本文补充插件的宿主和上游兼容行为。
+请求、普通响应和流式响应使用固定版本的 [apix v0.2.0](https://github.com/dillonzq/apix/tree/v0.2.0)。客户端可使用 Chat Completions、Messages、Responses 或 Gemini GenerateContent；MiniMax 上游提供 Chat Completions、Messages 和 Responses。详细字段映射和限制见[库的 LLM 协议说明](https://github.com/dillonzq/apix/blob/v0.2.0/docs/protocols/llm.zh-CN.md)和 [Gemini 协议说明](https://github.com/dillonzq/apix/blob/v0.2.0/docs/protocols/gemini.zh-CN.md)。本文补充插件的宿主和上游兼容行为。
 
 ## 插件接入
 
