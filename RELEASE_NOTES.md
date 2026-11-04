@@ -1,3 +1,27 @@
+# v0.1.2
+
+Fix M Plan usage responses that provide percentages instead of request counts.
+Requires **CLIProxyAPI v8.0.0 or later**.
+
+## Fixes
+
+- Read `current_interval_remaining_percent` and
+  `current_weekly_remaining_percent` before falling back to count fields.
+  Current plans can return zero for every count while still reporting valid
+  remaining percentages; those responses previously failed with
+  `quota response has no readings` and surfaced as HTTP 502 in CPA.
+- Show upstream percentages and reset times without inventing request totals.
+  Both 0% and 100% are valid readings. `quota.usage-count` continues to apply
+  only to count-based responses and never inverts remaining percentages.
+- Try the next configured quota endpoint when a response has no usable
+  readings. Authentication failures still stop the lookup immediately.
+
+## Upgrade
+
+Download `cpa-minimax_0.1.2_<os>_<arch>.zip` for your CPA host and verify it
+against `checksums.txt`. Stop CPA before replacing the plugin library, then
+restart CPA. No configuration changes are required.
+
 # v0.1.1
 
 Fix subscription usage queries for China mainland and international accounts.

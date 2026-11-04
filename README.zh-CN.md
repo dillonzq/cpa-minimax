@@ -165,10 +165,10 @@ M2.5 和 M2.7 默认不发布，仅在发现结果包含它们或通过 `models`
 
 | 桶 | 来源 | 重置时间 |
 |---|---|---|
-| `rolling` | `current_interval_total_count` / `current_interval_usage_count` | `end_time` |
-| `weekly` | `current_weekly_total_count` / `current_weekly_usage_count` | `weekly_end_time` |
+| `rolling` | 优先 `current_interval_remaining_percent`，否则使用 `current_interval_total_count` / `current_interval_usage_count` | `end_time` |
+| `weekly` | 优先 `current_weekly_remaining_percent`，否则使用 `current_weekly_total_count` / `current_weekly_usage_count` | `weekly_end_time` |
 
-总量为 `0` 的窗口表示不限，予以省略。插件默认将 `*_usage_count` 解释为**剩余**次数；若你的账户返回的是已用次数，设置 `quota.usage-count: used`。无效读数返回错误，不会编造 0。
+优先使用接口提供的 `*_remaining_percent`，次数字段全为零时也能显示剩余百分比，不编造请求次数。缺少百分比时，插件默认将 `*_usage_count` 解释为**剩余**次数；若账户返回已用次数，设置 `quota.usage-count: used`。仅有次数字段且缺少正数总量的窗口予以省略。无效读数返回错误，不会编造 0；响应中没有可用读数时也会继续尝试下一个配置端点。
 
 **按量 key** 只报告计划 `Pay-as-you-go`，不含用量桶。插件不查询账户余额；余额耗尽时通过错误 1008 使该 key 冷却（402）。请在 MiniMax 控制台查看余额。
 

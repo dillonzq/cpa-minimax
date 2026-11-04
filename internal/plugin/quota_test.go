@@ -131,6 +131,83 @@ func TestQuotaUsageCountUsedSemantics(t *testing.T) {
 	}
 }
 
+func TestQuotaPercentOnlySubscription(t *testing.T) {
+	// Current M Plan responses include valid percentages with all counts zero.
+	// Keep both general and video entries, as observed on the live CN endpoint.
+	body := `{"model_remains":[
+		{"model_name":"general","start_time":1778616000000,"end_time":1778634000000,
+		 "current_interval_total_count":0,"current_interval_usage_count":0,
+		 "current_interval_remaining_percent":42.5,"current_interval_status":1,
+		 "current_weekly_total_count":0,"current_weekly_usage_count":0,
+		 "current_weekly_remaining_percent":83,"current_weekly_status":3,"weekly_end_time":1779062400000},
+		{"model_name":"video","current_interval_total_count":0,"current_interval_usage_count":0,
+		 "current_interval_remaining_percent":100,"current_interval_status":3,
+		 "current_weekly_total_count":0,"current_weekly_usage_count":0,
+		 "current_weekly_remaining_percent":0,"current_weekly_status":3,"weekly_remains_time":60000}
+	],"base_resp":{"status_code":0,"status_msg":"success"}}`
+	cfg := loadQuotaConfig(t, "region: cn\napi-keys:\n  - value: sk-cp-selected\n")
+	m, _ := quotaManager(t, cfg, map[string]pluginapi.HTTPResponse{
+		"https://www.minimax.cn/v1/token_plan/remains": {StatusCode: http.StatusOK, Body: []byte(body)},
+	})
+	got, err := fetchQuota(t, m, map[string]string{"api_key": "sk-cp-selected"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Groups) != 2 || got.Groups[0].DisplayName != "general" || got.Groups[1].DisplayName != "video" {
+		t.Fatalf("groups = %+v", got.Groups)
+	}
+	for i, want := range [][]float64{{0.425, 0.83}, {1, 0}} {
+		if len(got.Groups[i].Buckets) != 2 {
+			t.Fatalf("group %d buckets = %+v", i, got.Groups[i].Buckets)
+		}
+		for j, fraction := range want {
+			if got.Groups[i].Buckets[j].RemainingFraction != fraction {
+				t.Fatalf("bucket %d/%d = %+v", i, j, got.Groups[i].Buckets[j])
+			}
+		}
+	}
+	rolling := got.Groups[0].Buckets[0]
+	if rolling.Description != "42.5% remaining (5h window)" || rolling.ResetTime != time.UnixMilli(1778634000000).UTC().Format(time.RFC3339Nano) {
+		t.Fatalf("rolling = %+v", rolling)
+	}
+	if got.Groups[0].Buckets[1].ResetTime != time.UnixMilli(1779062400000).UTC().Format(time.RFC3339Nano) || got.Groups[1].Buckets[1].ResetTime == "" {
+		t.Fatal("percentage-only windows lost their reset times")
+	}
+}
+
+func TestQuotaPercentagePrecedenceAndValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name, fields, semantics string
+		want                    float64
+		wantErr                 bool
+	}{
+		{"percent without counts", `"current_interval_remaining_percent":25`, config.UsageCountRemaining, 0.25, false},
+		{"percent wins over counts", `"current_interval_remaining_percent":25,"current_interval_total_count":100,"current_interval_usage_count":80`, config.UsageCountRemaining, 0.25, false},
+		{"used affects counts only", `"current_interval_remaining_percent":25,"current_interval_total_count":100,"current_interval_usage_count":80`, config.UsageCountUsed, 0.25, false},
+		{"null falls back to counts", `"current_interval_remaining_percent":null,"current_interval_total_count":100,"current_interval_usage_count":80`, config.UsageCountRemaining, 0.8, false},
+		{"negative percent", `"current_interval_remaining_percent":-1`, config.UsageCountRemaining, 0, true},
+		{"percent above 100", `"current_interval_remaining_percent":101`, config.UsageCountRemaining, 0, true},
+		{"percent string", `"current_interval_remaining_percent":"25"`, config.UsageCountRemaining, 0, true},
+		{"weekly percent above 100", `"current_weekly_remaining_percent":101`, config.UsageCountRemaining, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := normalizeQuota([]byte(`{"model_remains":[{`+tc.fields+`}]}`), config.RegionGlobal, tc.semantics, time.Now())
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("invalid percentage accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Groups[0].Buckets[0].RemainingFraction != tc.want {
+				t.Fatalf("bucket = %+v", got.Groups[0].Buckets[0])
+			}
+		})
+	}
+}
+
 func TestQuotaWindowsOmittedAndValidated(t *testing.T) {
 	now := time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC)
 	// A weekly total of 0 means no weekly limit; remains_time backs a missing end_time.
@@ -166,6 +243,20 @@ func TestQuotaFallsBackToLegacyEndpoint(t *testing.T) {
 	urls := requestedURLs(f)
 	if len(urls) != 2 || urls[0] != "https://www.minimax.io/v1/token_plan/remains" || urls[1] != "https://www.minimax.io/v1/api/openplatform/coding_plan/remains" {
 		t.Fatalf("endpoint order = %v", urls)
+	}
+}
+
+func TestQuotaFallsBackAfterUnusableResponse(t *testing.T) {
+	for _, body := range []string{`{}`, `{"model_remains":[]}`, `{"model_remains":[{"current_interval_total_count":0,"current_interval_usage_count":0}]}`, `not json`} {
+		cfg := loadQuotaConfig(t, "api-keys:\n  - value: sk-cp-plan\n")
+		m, f := quotaManager(t, cfg, map[string]pluginapi.HTTPResponse{
+			"https://www.minimax.io/v1/token_plan/remains":                   {StatusCode: http.StatusOK, Body: []byte(body)},
+			"https://www.minimax.io/v1/api/openplatform/coding_plan/remains": {StatusCode: http.StatusOK, Body: []byte(remainsBody)},
+		})
+		got, err := fetchQuota(t, m, map[string]string{"api_key": "sk-cp-plan"})
+		if err != nil || len(got.Groups) != 1 || len(requestedURLs(f)) != 2 {
+			t.Fatalf("unusable response did not fall back: groups=%+v, err=%v", got.Groups, err)
+		}
 	}
 }
 

@@ -165,10 +165,10 @@ Discover support with `GET /v0/management/quota/providers`, then call `POST /v0/
 
 | Bucket | Source | Reset |
 |---|---|---|
-| `rolling` | `current_interval_total_count` / `current_interval_usage_count` | `end_time` |
-| `weekly` | `current_weekly_total_count` / `current_weekly_usage_count` | `weekly_end_time` |
+| `rolling` | `current_interval_remaining_percent`, falling back to `current_interval_total_count` / `current_interval_usage_count` | `end_time` |
+| `weekly` | `current_weekly_remaining_percent`, falling back to `current_weekly_total_count` / `current_weekly_usage_count` | `weekly_end_time` |
 
-A window whose total is `0` is unlimited and omitted. The plugin interprets `*_usage_count` as the **remaining** count by default; if your account reports the used count, set `quota.usage-count: used`. Invalid readings return an error, not an invented zero.
+Explicit `*_remaining_percent` fields take precedence, including when all count fields are zero. Percentage-only readings show the upstream percentage without inventing request counts. If no percentage is present, the plugin interprets `*_usage_count` as the **remaining** count by default; set `quota.usage-count: used` for accounts reporting used counts. Count-only windows without a positive total are omitted. Invalid readings return an error, not an invented zero. An unusable response also triggers the next configured endpoint.
 
 **Pay-as-you-go keys** report `Pay-as-you-go` as the plan without usage buckets. The plugin does not query the account balance; exhaustion is handled through error 1008, which cools the key down (402). Check the balance in the MiniMax console.
 

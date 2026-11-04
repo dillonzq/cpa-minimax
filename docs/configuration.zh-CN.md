@@ -105,7 +105,7 @@ api-keys:
 | `catalog.stale-while-unavailable` | `bool` | `true` | 发现失败时保留上次成功的列表。 |
 | `protocols.<protocol>.endpoint` | `string` | 协议默认值 | 所有模型的端点路径。 |
 | `models` | `[]object` | `[]` | 按上游 `name` 覆盖元数据或声明模型：`display-name`、`description`、`max-context-length`、`max-tokens`、`input-modalities`、`output-modalities`、`thinking`（`min`、`max`、`zero-allowed`、`dynamic-allowed`、`levels`）及 `protocols`。 |
-| `quota.usage-count` | `string` | `remaining` | 如何解释 remains 接口的 `*_usage_count`。 |
+| `quota.usage-count` | `string` | `remaining` | 缺少 `*_remaining_percent` 时，如何解释 `*_usage_count`。显式剩余百分比优先，且不随此配置反转。 |
 | `quota.endpoints` | `[]string` | 见示例 | 依次尝试的 remains 路径。默认用量主机为国内 `https://www.minimax.cn`、国际 `https://www.minimax.io`；显式配置的单 key 或共享 `base-url` 仍优先。 |
 | `request-timeout` | `duration` | `5m` | 打开并读取上游请求的截止时间。 |
 | `max-response-bytes` | `int64` | `67108864` | 响应的最大字节数；流式响应累计所有分块。 |

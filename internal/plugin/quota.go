@@ -27,8 +27,10 @@ type quotaModelRemains struct {
 	RemainsTime       *float64 `json:"remains_time"`
 	IntervalTotal     *float64 `json:"current_interval_total_count"`
 	IntervalUsage     *float64 `json:"current_interval_usage_count"`
+	IntervalPercent   *float64 `json:"current_interval_remaining_percent"`
 	WeeklyTotal       *float64 `json:"current_weekly_total_count"`
 	WeeklyUsage       *float64 `json:"current_weekly_usage_count"`
+	WeeklyPercent     *float64 `json:"current_weekly_remaining_percent"`
 	WeeklyEndTime     *float64 `json:"weekly_end_time"`
 	WeeklyRemainsTime *float64 `json:"weekly_remains_time"`
 }
@@ -93,7 +95,12 @@ func (m *Manager) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchReques
 			}
 			continue
 		}
-		return normalizeQuota(resp.Body, entry.Region, cfg.Quota.UsageCount, time.Now())
+		quota, err := normalizeQuota(resp.Body, entry.Region, cfg.Quota.UsageCount, time.Now())
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return quota, nil
 	}
 	return empty, lastErr
 }
@@ -109,15 +116,15 @@ func normalizeQuota(body []byte, region, usageCount string, now time.Time) (plug
 	for _, entry := range decoded.ModelRemains {
 		var buckets []pluginapi.QuotaBucket
 		windows := []struct {
-			name                   string
-			total, count, end, rem *float64
-			length                 string
+			name                            string
+			total, count, percent, end, rem *float64
+			length                          string
 		}{
-			{"rolling", entry.IntervalTotal, entry.IntervalUsage, entry.EndTime, entry.RemainsTime, windowLength(entry.StartTime, entry.EndTime)},
-			{"weekly", entry.WeeklyTotal, entry.WeeklyUsage, entry.WeeklyEndTime, entry.WeeklyRemainsTime, "7d"},
+			{"rolling", entry.IntervalTotal, entry.IntervalUsage, entry.IntervalPercent, entry.EndTime, entry.RemainsTime, windowLength(entry.StartTime, entry.EndTime)},
+			{"weekly", entry.WeeklyTotal, entry.WeeklyUsage, entry.WeeklyPercent, entry.WeeklyEndTime, entry.WeeklyRemainsTime, "7d"},
 		}
 		for _, w := range windows {
-			bucket, ok, err := quotaBucket(w.name, w.length, w.total, w.count, w.end, w.rem, usageCount, now)
+			bucket, ok, err := quotaBucket(w.name, w.length, w.total, w.count, w.percent, w.end, w.rem, usageCount, now)
 			if err != nil {
 				return pluginapi.QuotaFetchResponse{}, err
 			}
@@ -140,19 +147,31 @@ func normalizeQuota(body []byte, region, usageCount string, now time.Time) (plug
 	return pluginapi.QuotaFetchResponse{Subscription: &pluginapi.QuotaSubscription{Plan: "M Plan", TierName: regionName(region)}, Groups: groups}, nil
 }
 
-// quotaBucket normalizes one window. A missing or zero total means the
-// window is not limited and is omitted; counts outside [0,total] are invalid
-// readings, not clamped into invented values.
-func quotaBucket(window, length string, total, count, endMs, remainsMs *float64, usageCount string, now time.Time) (pluginapi.QuotaBucket, bool, error) {
-	if total == nil || *total == 0 || count == nil {
-		return pluginapi.QuotaBucket{}, false, nil
-	}
-	if !finite(*total) || !finite(*count) || *total < 0 || *count < 0 || *count > *total {
-		return pluginapi.QuotaBucket{}, false, fmt.Errorf("quota count invalid")
-	}
-	remaining := *count
-	if usageCount == config.UsageCountUsed {
-		remaining = *total - *count
+// quotaBucket prefers the upstream's explicit remaining percentage. Current
+// plans can report zero counts alongside valid percentages. Older responses
+// without percentages still use counts; absent/zero totals yield no reading.
+func quotaBucket(window, length string, total, count, percent, endMs, remainsMs *float64, usageCount string, now time.Time) (pluginapi.QuotaBucket, bool, error) {
+	var fraction float64
+	var description string
+	if percent != nil {
+		if !finite(*percent) || *percent < 0 || *percent > 100 {
+			return pluginapi.QuotaBucket{}, false, fmt.Errorf("quota remaining percent invalid")
+		}
+		fraction = *percent / 100
+		description = fmt.Sprintf("%g%% remaining", *percent)
+	} else {
+		if total == nil || *total == 0 || count == nil {
+			return pluginapi.QuotaBucket{}, false, nil
+		}
+		if !finite(*total) || !finite(*count) || *total < 0 || *count < 0 || *count > *total {
+			return pluginapi.QuotaBucket{}, false, fmt.Errorf("quota count invalid")
+		}
+		remaining := *count
+		if usageCount == config.UsageCountUsed {
+			remaining = *total - *count
+		}
+		fraction = remaining / *total
+		description = fmt.Sprintf("%.0f of %.0f requests remaining", remaining, *total)
 	}
 	reset := ""
 	switch {
@@ -161,11 +180,10 @@ func quotaBucket(window, length string, total, count, endMs, remainsMs *float64,
 	case remainsMs != nil && finite(*remainsMs) && *remainsMs > 0:
 		reset = now.Add(time.Duration(*remainsMs) * time.Millisecond).UTC().Format(time.RFC3339Nano)
 	}
-	description := fmt.Sprintf("%.0f of %.0f requests remaining", remaining, *total)
 	if length != "" {
 		description += " (" + length + " window)"
 	}
-	return pluginapi.QuotaBucket{Window: window, RemainingFraction: remaining / *total, ResetTime: reset, Description: description}, true, nil
+	return pluginapi.QuotaBucket{Window: window, RemainingFraction: fraction, ResetTime: reset, Description: description}, true, nil
 }
 
 // windowLength renders the observed interval length, e.g. "5h".
