@@ -27,6 +27,9 @@ const ProviderID = "minimax"
 // pluginName is the identifier used for configuration and management routes.
 const pluginName = "cpa-minimax"
 
+// pluginDisplayName is the human-readable name exposed in registration metadata.
+const pluginDisplayName = "MiniMax"
+
 // authIDPrefix starts stable auth IDs derived from the key digest.
 const authIDPrefix = "minimax-key-"
 
@@ -275,7 +278,7 @@ func registrationEnvelope() []byte {
 	return okEnvelope(registrationResult{
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
-			Name:             pluginName,
+			Name:             pluginDisplayName,
 			Version:          pluginVersion,
 			Author:           "dillonzq",
 			GitHubRepository: githubRepoURL,
