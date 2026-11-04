@@ -286,6 +286,22 @@ func (c Config) UpstreamBaseURL(key APIKey) string {
 	return defaultBaseURL(region)
 }
 
+// QuotaBaseURL uses the documented website host for subscription usage.
+// Explicit upstream overrides still apply, including proxy deployments.
+func (c Config) QuotaBaseURL(key APIKey) string {
+	if key.BaseURL != "" || (c.BaseURL != "" && !c.baseURLDefaulted) {
+		return c.UpstreamBaseURL(key)
+	}
+	region, ok := NormalizeRegion(key.Region)
+	if !ok {
+		region = c.Region
+	}
+	if region == RegionCN {
+		return "https://www.minimax.cn"
+	}
+	return "https://www.minimax.io"
+}
+
 func defaultBaseURL(region string) string {
 	if region == RegionCN {
 		return DefaultCNBaseURL

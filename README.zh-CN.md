@@ -161,7 +161,7 @@ M2.5 和 M2.7 默认不发布，仅在发现结果包含它们或通过 `models`
 
 先用 `GET /v0/management/quota/providers` 确认支持情况，再以 `{"auth_index":"<所选索引>"}` 调用 `POST /v0/management/quota/fetch`。两者都需要 CPA 管理密钥。插件只查询所选凭证。
 
-**订阅 key** 在按上述优先级解析的主机上调用 `GET /v1/token_plan/remains`，必要时尝试旧接口 `/v1/api/openplatform/coding_plan/remains`。每个 `model_remains` 条目成为一个分组（例如 `MiniMax-M*`），包含：
+**订阅 key** 默认在官方用量查询主机（国内 `https://www.minimax.cn`、国际 `https://www.minimax.io`）上调用 `GET /v1/token_plan/remains`，必要时尝试旧接口 `/v1/api/openplatform/coding_plan/remains`。显式配置的单 key 或共享 `base-url` 仍优先用于用量查询。每个 `model_remains` 条目成为一个分组（例如 `MiniMax-M*`），包含：
 
 | 桶 | 来源 | 重置时间 |
 |---|---|---|

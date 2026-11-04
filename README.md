@@ -161,7 +161,7 @@ Use `models[].protocols` to enable or disable one model’s routes, and `protoco
 
 Discover support with `GET /v0/management/quota/providers`, then call `POST /v0/management/quota/fetch` with `{"auth_index":"<selected index>"}`. Both need the CPA management key. The plugin queries the selected credential only.
 
-**Subscription keys** call `GET /v1/token_plan/remains` on the key's resolved upstream host, with `/v1/api/openplatform/coding_plan/remains` as a fallback for eligible failures. Each `model_remains` entry becomes a group (for example `MiniMax-M*`) with:
+**Subscription keys** call `GET /v1/token_plan/remains` on the official usage host (`https://www.minimax.cn` for China, `https://www.minimax.io` for Global), with `/v1/api/openplatform/coding_plan/remains` as a fallback for eligible failures. Explicit per-key or shared `base-url` overrides still apply to quota queries. Each `model_remains` entry becomes a group (for example `MiniMax-M*`) with:
 
 | Bucket | Source | Reset |
 |---|---|---|

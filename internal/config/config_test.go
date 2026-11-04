@@ -22,6 +22,31 @@ func requireErrContains(t *testing.T, err error, want string) {
 // later validation check.
 const withKey = "api-keys:\n  - value: sk-dummy\n"
 
+func TestQuotaBaseURL(t *testing.T) {
+	for _, tc := range []struct {
+		name, yaml, region, override, want string
+	}{
+		{"global default", withKey, "global", "", "https://www.minimax.io"},
+		{"cn selected key", withKey, "cn", "", "https://www.minimax.cn"},
+		{"cn config default", "region: cn\n" + withKey, "", "", "https://www.minimax.cn"},
+		{"global selected key", "region: cn\n" + withKey, "global", "", "https://www.minimax.io"},
+		{"shared proxy", "base-url: https://proxy.example.com\n" + withKey, "cn", "", "https://proxy.example.com"},
+		{"explicit api host", "base-url: https://api.minimax.cn\n" + withKey, "cn", "", "https://api.minimax.cn"},
+		{"key proxy", "base-url: https://shared.example.com\n" + withKey, "cn", "https://key.example.com", "https://key.example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load([]byte(tc.yaml))
+			if err != nil {
+				t.Fatal(err)
+			}
+			key := APIKey{Region: tc.region, BaseURL: tc.override}
+			if got := cfg.QuotaBaseURL(key); got != tc.want {
+				t.Fatalf("QuotaBaseURL = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestModelMetadataOverrides(t *testing.T) {
 	c, err := Load([]byte(withKey + `models:
   - name: MiniMax-Test

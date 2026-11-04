@@ -106,7 +106,7 @@ Only key `value` fields expand `${ENV_VAR}`; `base-url` and other fields do not.
 | `protocols.<protocol>.endpoint` | `string` | protocol default | Endpoint path for every model. |
 | `models` | `[]object` | `[]` | Metadata overrides and declarations by upstream `name`: `display-name`, `description`, `max-context-length`, `max-tokens`, `input-modalities`, `output-modalities`, `thinking` (`min`, `max`, `zero-allowed`, `dynamic-allowed`, `levels`), and `protocols`. |
 | `quota.usage-count` | `string` | `remaining` | How to read `*_usage_count` from the remains endpoint. |
-| `quota.endpoints` | `[]string` | see example | Remains endpoints tried in order. |
+| `quota.endpoints` | `[]string` | see example | Remains paths tried in order. The default quota host is `https://www.minimax.cn` (cn) or `https://www.minimax.io` (global); explicit per-key/shared `base-url` overrides apply. |
 | `request-timeout` | `duration` | `5m` | Deadline for opening and consuming an upstream request. |
 | `max-response-bytes` | `int64` | `67108864` | Maximum response size; a stream counts all of its chunks. |
 | `allow-http` | `bool` | `false` | Permit `http://` hosts for local testing. |

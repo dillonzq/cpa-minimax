@@ -69,7 +69,7 @@ func (m *Manager) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchReques
 	for _, endpoint := range cfg.Quota.Endpoints {
 		resp, err := m.bridge.Do(ctx, pluginapi.HTTPRequest{
 			Method:  http.MethodGet,
-			URL:     catalog.JoinUpstreamURL(cfg.UpstreamBaseURL(entry), endpoint),
+			URL:     catalog.JoinUpstreamURL(cfg.QuotaBaseURL(entry), endpoint),
 			Headers: http.Header{"Authorization": {"Bearer " + key}, "Accept": {"application/json"}},
 		})
 		if err != nil {

@@ -90,7 +90,7 @@ func TestQuotaRegistration(t *testing.T) {
 func TestQuotaSubscriptionUsesSelectedCredentialAndRegion(t *testing.T) {
 	cfg := loadQuotaConfig(t, "api-keys:\n  - value: sk-cp-not-selected\n")
 	m, f := quotaManager(t, cfg, map[string]pluginapi.HTTPResponse{
-		"https://api.minimax.cn/v1/token_plan/remains": {StatusCode: 200, Body: []byte(remainsBody)},
+		"https://www.minimax.cn/v1/token_plan/remains": {StatusCode: 200, Body: []byte(remainsBody)},
 	})
 	body, _ := json.Marshal(pluginapi.QuotaFetchRequest{Provider: ProviderID, Attributes: map[string]string{"api_key": "sk-cp-selected", "region": "cn", "key_type": "subscription"}})
 	var got pluginapi.QuotaFetchResponse
@@ -157,14 +157,14 @@ func TestQuotaWindowsOmittedAndValidated(t *testing.T) {
 func TestQuotaFallsBackToLegacyEndpoint(t *testing.T) {
 	cfg := loadQuotaConfig(t, "api-keys:\n  - value: sk-cp-plan\n")
 	m, f := quotaManager(t, cfg, map[string]pluginapi.HTTPResponse{
-		"https://api.minimax.io/v1/api/openplatform/coding_plan/remains": {StatusCode: 200, Body: []byte(remainsBody)},
+		"https://www.minimax.io/v1/api/openplatform/coding_plan/remains": {StatusCode: 200, Body: []byte(remainsBody)},
 	})
 	got, err := fetchQuota(t, m, map[string]string{"api_key": "sk-cp-plan"})
 	if err != nil || len(got.Groups) != 1 {
 		t.Fatalf("legacy fallback failed: %+v %v", got, err)
 	}
 	urls := requestedURLs(f)
-	if len(urls) != 2 || urls[0] != "https://api.minimax.io/v1/token_plan/remains" || urls[1] != "https://api.minimax.io/v1/api/openplatform/coding_plan/remains" {
+	if len(urls) != 2 || urls[0] != "https://www.minimax.io/v1/token_plan/remains" || urls[1] != "https://www.minimax.io/v1/api/openplatform/coding_plan/remains" {
 		t.Fatalf("endpoint order = %v", urls)
 	}
 }
@@ -172,7 +172,7 @@ func TestQuotaFallsBackToLegacyEndpoint(t *testing.T) {
 func TestQuotaBaseRespAuthErrorStops(t *testing.T) {
 	cfg := loadQuotaConfig(t, "api-keys:\n  - value: sk-cp-plan\n")
 	m, f := quotaManager(t, cfg, map[string]pluginapi.HTTPResponse{
-		"https://api.minimax.io/v1/token_plan/remains": {StatusCode: 200, Body: []byte(`{"base_resp":{"status_code":1004,"status_msg":"login fail"}}`)},
+		"https://www.minimax.io/v1/token_plan/remains": {StatusCode: 200, Body: []byte(`{"base_resp":{"status_code":1004,"status_msg":"login fail"}}`)},
 	})
 	if _, err := fetchQuota(t, m, map[string]string{"api_key": "sk-cp-plan"}); err == nil || !strings.Contains(err.Error(), "1004") {
 		t.Fatalf("base_resp 1004 accepted: %v", err)
@@ -194,6 +194,55 @@ func TestQuotaAPIKeyReportsPlanWithoutUpstreamCall(t *testing.T) {
 	}
 }
 
+func TestQuotaRegionAndKeyTypeMatrix(t *testing.T) {
+	for _, tc := range []struct {
+		name, region, key, keyType, wantHost, wantPlan, wantTier string
+	}{
+		{"cn subscription", "cn", "sk-cp-selected", "", "https://www.minimax.cn", "M Plan", "China"},
+		{"global subscription", "global", "sk-cp-selected", "", "https://www.minimax.io", "M Plan", "Global"},
+		{"cn pay as you go", "cn", "sk-selected", "", "", "Pay-as-you-go", "China"},
+		{"global pay as you go", "global", "sk-selected", "", "", "Pay-as-you-go", "Global"},
+		{"explicit api overrides prefix", "global", "sk-cp-selected", "api", "", "Pay-as-you-go", "Global"},
+		{"explicit subscription overrides prefix", "cn", "sk-selected", "subscription", "https://www.minimax.cn", "M Plan", "China"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// The configured credential must never replace the host's selection.
+			cfg := loadQuotaConfig(t, "api-keys:\n  - value: sk-cp-unselected\n")
+			m, f := quotaManager(t, cfg, map[string]pluginapi.HTTPResponse{
+				tc.wantHost + "/v1/token_plan/remains": {StatusCode: http.StatusOK, Body: []byte(remainsBody)},
+			})
+			if tc.wantHost == "" {
+				// Local plan reporting must also work without a network bridge.
+				m.bridge = nil
+			}
+			got, err := fetchQuota(t, m, map[string]string{"api_key": tc.key, "region": tc.region, "key_type": tc.keyType})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Subscription == nil || got.Subscription.Plan != tc.wantPlan || got.Subscription.TierName != tc.wantTier {
+				t.Fatalf("subscription = %+v", got.Subscription)
+			}
+			calls := f.callsOf(pluginabi.MethodHostHTTPDo)
+			if tc.wantHost == "" {
+				if len(calls) != 0 || len(got.Groups) != 0 {
+					t.Fatal("pay-as-you-go lookup attempted a subscription query")
+				}
+				return
+			}
+			if len(calls) != 1 || len(got.Groups) != 1 {
+				t.Fatalf("requests = %d, groups = %d", len(calls), len(got.Groups))
+			}
+			var wire pluginapi.HTTPRequest
+			if err := json.Unmarshal(calls[0].payload, &wire); err != nil {
+				t.Fatal(err)
+			}
+			if wire.URL != tc.wantHost+"/v1/token_plan/remains" || wire.Headers.Get("Authorization") != "Bearer "+tc.key {
+				t.Fatalf("wrong selected credential or region: url=%s", wire.URL)
+			}
+		})
+	}
+}
+
 func TestQuotaRejectsInvalidCredentials(t *testing.T) {
 	m, _ := quotaManager(t, loadQuotaConfig(t, "api-keys:\n  - value: sk-cp-plan\n"), nil)
 	for _, req := range []pluginapi.QuotaFetchRequest{
@@ -210,7 +259,7 @@ func TestQuotaRejectsInvalidCredentials(t *testing.T) {
 func TestQuotaErrorsRedacted(t *testing.T) {
 	cfg := loadQuotaConfig(t, "api-keys:\n  - value: sk-cp-secret\n")
 	for _, response := range []pluginapi.HTTPResponse{{StatusCode: 401, Body: []byte("sk-cp-secret")}, {StatusCode: http.StatusOK, Body: []byte("sk-cp-secret")}} {
-		m, _ := quotaManager(t, cfg, map[string]pluginapi.HTTPResponse{"https://api.minimax.io/v1/token_plan/remains": response})
+		m, _ := quotaManager(t, cfg, map[string]pluginapi.HTTPResponse{"https://www.minimax.io/v1/token_plan/remains": response})
 		_, err := fetchQuota(t, m, map[string]string{"api_key": "sk-cp-secret"})
 		if err == nil || strings.Contains(err.Error(), "secret") {
 			t.Fatalf("unredacted or missing error: %v", err)

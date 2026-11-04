@@ -1,3 +1,25 @@
+# v0.1.1
+
+Fix subscription usage queries for China mainland and international accounts.
+Requires **CLIProxyAPI v8.0.0 or later**.
+
+## Fixes
+
+- Query subscription usage on the official website hosts:
+  `https://www.minimax.cn` for China mainland and `https://www.minimax.io`
+  for international accounts. Previously, quota queries reused the inference
+  API host, which could time out and surface as a 502 Bad Gateway in CPA.
+- Preserve explicit shared and per-key `base-url` overrides for quota queries.
+  Pay-as-you-go keys continue to report their plan without querying subscription
+  usage or account balances.
+
+## Upgrade
+
+Download `cpa-minimax_0.1.1_<os>_<arch>.zip` for your CPA host and verify it
+against `checksums.txt`. Stop CPA before replacing the plugin library, then
+restart CPA. No configuration migration is required. An explicitly configured
+`base-url` continues to override the default quota host.
+
 # v0.1.0
 
 First release of **cpa-minimax**, a native CLIProxyAPI plugin that exposes
