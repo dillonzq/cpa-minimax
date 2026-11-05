@@ -104,7 +104,7 @@ api-keys:
 | `catalog.refresh-interval` | `duration` | `15m` | 发现间隔，最小 `1m`。 |
 | `catalog.stale-while-unavailable` | `bool` | `true` | 发现失败时保留上次成功的列表。 |
 | `protocols.<protocol>.endpoint` | `string` | 协议默认值 | 所有模型的端点路径。 |
-| `models` | `[]object` | `[]` | 按上游 `name` 覆盖元数据或声明模型：`display-name`、`description`、`max-context-length`、`max-tokens`、`input-modalities`、`output-modalities`、`thinking`（`min`、`max`、`zero-allowed`、`dynamic-allowed`、`levels`）及 `protocols`。 |
+| `models` | `[]object` | `[]` | 按上游 `name` 覆盖元数据或声明模型：`alias`、`display-name`、`description`、`max-context-length`、`max-tokens`、`input-modalities`、`output-modalities`、`thinking`（`min`、`max`、`zero-allowed`、`dynamic-allowed`、`levels`）及 `protocols`。 |
 | `quota.usage-count` | `string` | `remaining` | 缺少 `*_remaining_percent` 时，如何解释 `*_usage_count`。显式剩余百分比优先，且不随此配置反转。 |
 | `quota.endpoints` | `[]string` | 见示例 | 依次尝试的 remains 路径。默认用量主机为国内 `https://www.minimax.cn`、国际 `https://www.minimax.io`；显式配置的单 key 或共享 `base-url` 仍优先。 |
 | `request-timeout` | `duration` | `5m` | 打开并读取上游请求的截止时间。 |
@@ -136,6 +136,16 @@ models:
 端点路径优先级为模型级覆盖 → 全局 `protocols` → 协议默认路径。全局 `protocols` 只能设置端点；在 `models[].protocols` 中使用 `enabled` 开关协议。列出的协议默认为开启，所有路径必须以 `/` 开头。禁用一个模型的全部协议会将它从可路由目录中移除。
 
 `models[].thinking` 支持 `min`、`max`、`zero-allowed`、`dynamic-allowed`、`levels`。省略字段保留内置值，显式 `0`、`false` 或空列表保留其配置含义。
+
+`models[].alias` 沿用 CPA 的 `name`/`alias` 约定，用别名替换对外发布 ID 中的上游 `name`；前缀仍会叠加，请求上游时仍发送 `name`。别名必须唯一；若别名与其他模型的 ID 冲突，后出现的模型会被排除，原因记录在诊断信息中。例如把 `MiniMax-M3` 发布为 `minimax-m3`，与另一个发布同名模型的提供方合为同一个模型池：
+
+```yaml
+model-prefix:
+  enabled: false
+models:
+  - name: MiniMax-M3
+    alias: minimax-m3
+```
 
 ## 凭证文件
 

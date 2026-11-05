@@ -73,10 +73,21 @@ func TestModelMetadataOverrides(t *testing.T) {
 	}
 }
 
+func TestModelAlias(t *testing.T) {
+	c, err := Load([]byte(withKey + "models: [{name: MiniMax-M3, alias: minimax-m3}, {name: MiniMax-M2}]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Models[0].Alias != "minimax-m3" || c.Models[1].Alias != "" {
+		t.Fatalf("aliases = %q, %q", c.Models[0].Alias, c.Models[1].Alias)
+	}
+}
+
 func TestModelMetadataValidation(t *testing.T) {
 	for _, yaml := range []string{
 		"models: [{name: ''}]", "models: [{name: m}, {name: m}]",
 		"models: [{name: m, max-context-length: -1}]", "models: [{name: m, thinking: {min: 10, max: 1}}]",
+		"models: [{name: a, alias: x}, {name: b, alias: x}]", "models: [{name: a, alias: ' x'}]",
 	} {
 		if _, err := Load([]byte(withKey + yaml)); err == nil {
 			t.Errorf("accepted invalid metadata config %s", yaml)

@@ -580,6 +580,43 @@ func TestSwapPublicUpstreamCrossKeyCollision(t *testing.T) {
 	}
 }
 
+func TestModelAliasPublishesAliasAndSendsUpstreamName(t *testing.T) {
+	for _, c := range []struct {
+		prefix bool
+		want   string
+	}{{true, "minimax/minimax-m3"}, {false, "minimax-m3"}} {
+		cfg := testCfg()
+		cfg.ModelPrefix.Enabled = c.prefix
+		cfg.Models = append(cfg.Models, config.ModelOverride{Name: "MiniMax-M3", Alias: "minimax-m3"})
+		m := New(cfg, nil)
+		rec := findModel(t, m.Models(), "MiniMax-M3")
+		if rec.PublicID != c.want {
+			t.Fatalf("prefix %v: PublicID = %q, want %q", c.prefix, rec.PublicID, c.want)
+		}
+		for _, id := range []string{c.want, "MiniMax-M3"} {
+			if got, ok := m.Lookup(id); !ok || got.UpstreamID != "MiniMax-M3" {
+				t.Errorf("prefix %v: Lookup(%q) = %+v, %v", c.prefix, id, got, ok)
+			}
+		}
+		if _, ok := m.Lookup("minimax/MiniMax-M3"); ok && c.prefix {
+			t.Errorf("original public ID still routes after aliasing")
+		}
+	}
+}
+
+func TestModelAliasCollidingWithUpstreamIsExcluded(t *testing.T) {
+	cfg := testCfg()
+	cfg.ModelPrefix.Enabled = false
+	cfg.Models = append(cfg.Models, config.ModelOverride{Name: "MiniMax-M3", Alias: "MiniMax-M3.1-Flash"})
+	m := New(cfg, nil)
+	if got := ids(m.Models()); !reflect.DeepEqual(got, []string{"MiniMax-M3.1-Flash"}) {
+		t.Fatalf("models = %v", got)
+	}
+	if u := m.Unsupported(); len(u) != 1 || u[0].UpstreamID != "MiniMax-M3" || !strings.Contains(u[0].Reason, "collides") {
+		t.Fatalf("unsupported = %+v", u)
+	}
+}
+
 func TestJoinUpstreamURL(t *testing.T) {
 	for _, c := range []struct{ base, endpoint, want string }{
 		{"https://api.minimax.io", "/v1/models", "https://api.minimax.io/v1/models"},

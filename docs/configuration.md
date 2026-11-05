@@ -104,7 +104,7 @@ Only key `value` fields expand `${ENV_VAR}`; `base-url` and other fields do not.
 | `catalog.refresh-interval` | `duration` | `15m` | Discovery interval, minimum `1m`. |
 | `catalog.stale-while-unavailable` | `bool` | `true` | Keep the last good listing when discovery fails. |
 | `protocols.<protocol>.endpoint` | `string` | protocol default | Endpoint path for every model. |
-| `models` | `[]object` | `[]` | Metadata overrides and declarations by upstream `name`: `display-name`, `description`, `max-context-length`, `max-tokens`, `input-modalities`, `output-modalities`, `thinking` (`min`, `max`, `zero-allowed`, `dynamic-allowed`, `levels`), and `protocols`. |
+| `models` | `[]object` | `[]` | Metadata overrides and declarations by upstream `name`: `alias`, `display-name`, `description`, `max-context-length`, `max-tokens`, `input-modalities`, `output-modalities`, `thinking` (`min`, `max`, `zero-allowed`, `dynamic-allowed`, `levels`), and `protocols`. |
 | `quota.usage-count` | `string` | `remaining` | How to read `*_usage_count` when no `*_remaining_percent` is present. Explicit remaining percentages take precedence and are never inverted. |
 | `quota.endpoints` | `[]string` | see example | Remains paths tried in order. The default quota host is `https://www.minimax.cn` (cn) or `https://www.minimax.io` (global); explicit per-key/shared `base-url` overrides apply. |
 | `request-timeout` | `duration` | `5m` | Deadline for opening and consuming an upstream request. |
@@ -136,6 +136,16 @@ models:
 Endpoint paths resolve from model override → global `protocols` → protocol default. Global `protocols` only sets endpoints; use `enabled` under `models[].protocols` to switch a route. A listed protocol is enabled by default, and all paths must start with `/`. Disabling every protocol removes the model from the routable catalog.
 
 `models[].thinking` accepts `min`, `max`, `zero-allowed`, `dynamic-allowed`, and `levels`. Omitted fields retain built-in values; explicit `0`, `false`, and empty lists preserve their configured meaning.
+
+`models[].alias` replaces the upstream `name` in the published model ID, following CPA's `name`/`alias` convention; the prefix still applies, and requests still send `name` upstream. Aliases must be unique. An alias that collides with another model's ID excludes the later model, with the reason reported in diagnostics. For example, to publish `MiniMax-M3` as `minimax-m3` so it shares one model pool with another provider that publishes that name:
+
+```yaml
+model-prefix:
+  enabled: false
+models:
+  - name: MiniMax-M3
+    alias: minimax-m3
+```
 
 ## Credential files
 

@@ -244,7 +244,7 @@ func pluginConfigFields() []pluginapi.ConfigField {
 			Type:        pluginapi.ConfigFieldTypeObject,
 			Description: "Model discovery (`discover: bool`, `refresh-interval: string`, `stale-while-unavailable: bool`). Built-in models are always published.",
 		},
-		{Name: "models", Type: pluginapi.ConfigFieldTypeArray, Description: "Model declarations and metadata overrides using CPA provider fields: name, display-name, max-context-length, input-modalities, output-modalities, thinking; plus description, max-tokens, and protocols (`chat-completions|messages|responses: {enabled, endpoint}`)."},
+		{Name: "models", Type: pluginapi.ConfigFieldTypeArray, Description: "Model declarations and metadata overrides using CPA provider fields: name, alias (published model name; the prefix still applies), display-name, max-context-length, input-modalities, output-modalities, thinking; plus description, max-tokens, and protocols (`chat-completions|messages|responses: {enabled, endpoint}`)."},
 		{
 			Name:        "protocols",
 			Type:        pluginapi.ConfigFieldTypeObject,

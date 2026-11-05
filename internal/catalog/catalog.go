@@ -308,7 +308,7 @@ func (m *Manager) swap(entries []rawModel, extraWarns ...string) {
 			display = e.ID
 		}
 		rec := ModelRecord{
-			PublicID:     config.PublicID(m.cfg, e.ID),
+			PublicID:     config.PublicID(m.cfg, cmp.Or(override.Alias, e.ID)),
 			UpstreamID:   e.ID,
 			DisplayName:  display,
 			Description:  modelmeta.Value(metadata.Description),
