@@ -1,3 +1,26 @@
+# v0.2.1
+
+Add model aliases so MiniMax models can be published under a different name.
+Requires **CLIProxyAPI v8.0.0 or later**.
+
+## Features
+
+- Add `models[].alias`, following CPA's `name`/`alias` convention. The alias
+  replaces the upstream name in the published model ID; `model-prefix` still
+  applies, and requests still send `name` upstream. For example, with the
+  prefix disabled, `name: MiniMax-M3` and `alias: minimax-m3` publish
+  `minimax-m3`, so it can share one model pool with another provider that
+  publishes that name. Aliases must be unique; an alias that collides with
+  another model's ID excludes the later model and reports the reason in
+  diagnostics.
+
+## Upgrade
+
+Download `cpa-minimax_0.2.1_<os>_<arch>.zip` for your CPA host and verify it
+against `checksums.txt`. Stop CPA before replacing the plugin library, then
+restart CPA. No configuration changes are required; models without `alias`
+keep their existing IDs.
+
 # v0.2.0
 
 Fix the plugin display name and improve protocol conversion processing.
