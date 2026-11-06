@@ -192,7 +192,7 @@ Check the CPA log and the selected credential’s type, region, and resolved add
 | Symptom | What to check |
 |---|---|
 | Plugin or models missing | Library OS/architecture, both `enabled` switches, startup logs, and `model-prefix`. |
-| `invalid_config` | At least one unique, non-empty key; variables visible to the CPA process; HTTPS URLs unless `allow-http: true`. |
+| `invalid_config` | Misspelled or unknown settings; at least one unique, non-empty key; variables visible to the CPA process; HTTPS URLs unless `allow-http: true`. |
 | 1004 or repeated 401 | Key validity, its site, and any shared/per-key address override. |
 | Only built-in models appear | Discovery logs and permission to list `/v1/models`; an API key is preferred for discovery. |
 | No quota buckets for an API key | Expected: pay-as-you-go credentials report the plan only. |

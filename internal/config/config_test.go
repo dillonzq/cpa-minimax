@@ -150,7 +150,9 @@ func TestLoadFullConfigHonorsEveryField(t *testing.T) {
 	t.Setenv("TEST_MM_KEY", "test-secret-value")
 	doc := `
 enabled: true
-future-key: 1
+priority: 3
+store:
+  source: local
 region: cn
 base-url: http://localhost:9090/v1
 model-prefix:
@@ -397,10 +399,24 @@ func TestLoadEnvExpansion(t *testing.T) {
 	}
 }
 
-func TestLoadIgnoresUnknownFields(t *testing.T) {
-	doc := "routing:\n  strategy: round-robin\nfuture-field: https://example.invalid\ncatalog-url: https://x\nmodels-dev: {enabled: true}\n" + withKey
-	if _, err := Load([]byte(doc)); err != nil {
-		t.Fatalf("unknown fields must be ignored: %v", err)
+func TestLoadRejectsUnknownSettings(t *testing.T) {
+	for name, doc := range map[string]string{
+		"top level":  withKey + "request-timout: 5m\n",
+		"nested":     withKey + "catalog:\n  refresh: 1m\n",
+		"api key":    "api-keys:\n  - value: sk-dummy\n    label: x\n",
+		"model":      withKey + "models:\n  - name: m\n    max-token: 1\n",
+		"second doc": withKey + "---\n" + withKey,
+	} {
+		if _, err := Load([]byte(doc)); err == nil {
+			t.Errorf("%s: Load accepted %q", name, doc)
+		}
+	}
+}
+
+func TestLoadRejectsKeyWithNewline(t *testing.T) {
+	t.Setenv("TEST_MM_SPLIT_KEY", "sk-a\nsk-b")
+	if _, err := Load([]byte("api-keys:\n  - value: ${TEST_MM_SPLIT_KEY}\n")); err == nil || !strings.Contains(err.Error(), "newlines") {
+		t.Fatalf("Load error = %v, want newline rejection", err)
 	}
 }
 
