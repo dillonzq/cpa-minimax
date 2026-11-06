@@ -197,6 +197,7 @@ Check the CPA log and the selected credential’s type, region, and resolved add
 | Only built-in models appear | Discovery logs and permission to list `/v1/models`; an API key is preferred for discovery. |
 | No quota buckets for an API key | Expected: pay-as-you-go credentials report the plan only. |
 | Deleted YAML key still appears | Delete its retained credential file through CPA management. |
+| Stream ends with `stream exceeded stream-idle-timeout` or `stream exceeded max-stream-duration` | The upstream sent no chunk for `stream-idle-timeout`, or the stream reached `max-stream-duration`; raise the matching setting. `request-timeout` only bounds a stream's opening; see [Configuration options](docs/configuration.md#configuration-options). |
 
 For a reproducible bug, open an [issue](https://github.com/dillonzq/cpa-minimax/issues/new/choose) with sanitized config, request, versions, and logs. Report vulnerabilities [privately](SECURITY.md).
 

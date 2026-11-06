@@ -54,7 +54,9 @@ plugins:
           - /v1/token_plan/remains
           - /v1/api/openplatform/coding_plan/remains
 
-      request-timeout: 5m
+      request-timeout: 5m            # 非流式请求或流建立的超时
+      stream-idle-timeout: 5m        # 流式数据块之间的最长静默
+      max-stream-duration: 1h        # 单个流的最长时长
       max-response-bytes: 67108864
       allow-http: false
 ```
@@ -107,7 +109,9 @@ api-keys:
 | `models` | `[]object` | `[]` | 按上游 `name` 覆盖元数据或声明模型：`alias`、`display-name`、`description`、`max-context-length`、`max-tokens`、`input-modalities`、`output-modalities`、`thinking`（`min`、`max`、`zero-allowed`、`dynamic-allowed`、`levels`）及 `protocols`。 |
 | `quota.usage-count` | `string` | `remaining` | 缺少 `*_remaining_percent` 时，如何解释 `*_usage_count`。显式剩余百分比优先，且不随此配置反转。 |
 | `quota.endpoints` | `[]string` | 见示例 | 依次尝试的 remains 路径。默认用量主机为国内 `https://www.minimax.cn`、国际 `https://www.minimax.io`；显式配置的单 key 或共享 `base-url` 仍优先。 |
-| `request-timeout` | `duration` | `5m` | 打开并读取上游请求的截止时间。 |
+| `request-timeout` | `duration` | `5m` | 完整非流式请求的超时，或流式请求建立连接（收到上游状态码，含读取错误响应体）的超时；不限制已建立的流。到期取消宿主 operation，必须大于零。 |
+| `stream-idle-timeout` | `duration` | `5m` | 流建立后两个上游数据块之间的最长静默，每收到一块重新计时，向下游投递数据块的耗时不计入；到期以错误结束流。必须大于零。 |
+| `max-stream-duration` | `duration` | `1h` | 单个流的最长时长，从开始建立算起，不论是否活跃。必须大于零。 |
 | `max-response-bytes` | `int64` | `67108864` | 响应的最大字节数；流式响应累计所有分块。 |
 | `allow-http` | `bool` | `false` | 本地测试时允许 `http://` 主机。 |
 

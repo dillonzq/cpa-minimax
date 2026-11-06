@@ -1,3 +1,36 @@
+# v0.2.2
+
+Stop `request-timeout` from cutting off active streams.
+Requires **CLIProxyAPI v8.0.0 or later**.
+
+## Behavior changes
+
+- `request-timeout` no longer limits an open stream. It covers a whole
+  non-streaming request, and for a stream only the opening, until the upstream
+  status arrives and any error body is read. Two new settings govern open
+  streams: `stream-idle-timeout` (default `5m`) ends a stream that receives no
+  chunk for that long, restarting on every chunk and excluding time spent
+  delivering chunks downstream; `max-stream-duration` (default `1h`) caps one
+  stream's lifetime from the start of opening. Both must be positive.
+
+## Fixes
+
+- Long but active streams, such as large outputs or long reasoning, are no
+  longer cut off after `request-timeout` (default `5m`) while the upstream is
+  still sending data.
+- A stream ended by a limit now reports which one it hit:
+  `stream did not open within request-timeout`,
+  `stream exceeded stream-idle-timeout`, or
+  `stream exceeded max-stream-duration`.
+
+## Upgrade
+
+Download `cpa-minimax_0.2.2_<os>_<arch>.zip` for your CPA host and verify it
+against `checksums.txt`. Stop CPA before replacing the plugin library, then
+restart CPA. No configuration changes are required. A `request-timeout` raised
+only to keep long streams alive can return to its default; set
+`max-stream-duration` instead if streams may last over an hour.
+
 # v0.2.1
 
 Add model aliases so MiniMax models can be published under a different name.

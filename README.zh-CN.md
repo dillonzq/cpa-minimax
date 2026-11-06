@@ -197,6 +197,7 @@ M2.5 和 M2.7 默认不发布，仅在发现结果包含它们或通过 `models`
 | 只有内置模型 | 检查发现日志及 `/v1/models` 权限；发现优先使用 API key。 |
 | API key 没有额度桶 | 正常行为，按量 key 只显示计划。 |
 | YAML 删除 key 后仍显示 | 通过 CPA 管理接口删除保留的凭证文件。 |
+| 流以 `stream exceeded stream-idle-timeout` 或 `stream exceeded max-stream-duration` 结束 | 上游连续 `stream-idle-timeout` 未发送数据块，或流达到 `max-stream-duration`；调大对应配置。`request-timeout` 只限制流的建立，见[配置项](docs/configuration.zh-CN.md#配置项)。 |
 
 可复现问题请附脱敏配置、请求、版本和日志，提交 [issue](https://github.com/dillonzq/cpa-minimax/issues/new/choose)；漏洞请[私下报告](SECURITY.md)。
 
