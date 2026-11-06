@@ -133,39 +133,53 @@ func TestExecuteStreamOpenTimeout(t *testing.T) {
 	}
 }
 
-func TestExecuteStreamJSONBodyReadUnderOpenTimeout(t *testing.T) {
-	// A 200 JSON error body is still part of opening: a stalled read is
-	// bounded by request-timeout, not by stream-idle-timeout.
-	var once sync.Once
-	unblocked := make(chan struct{})
-	responder := wrapWithCatalog(testCatalogJSON, func(method string, _ []byte) ([]byte, error) {
-		switch method {
-		case pluginabi.MethodHostHTTPDoStream:
-			return hostOK(hostStreamStartResp{
-				StatusCode: http.StatusOK,
-				Headers:    http.Header{"Content-Type": []string{"application/json"}},
-				StreamID:   "up-json-stall",
-			}), nil
-		case pluginabi.MethodHostHTTPStreamRead:
-			<-unblocked
-			return hostOK(hostStreamReadResp{Done: true}), nil
-		case pluginabi.MethodHostHTTPStreamClose:
-			once.Do(func() { close(unblocked) })
-			return hostOK(map[string]any{}), nil
-		default:
-			return hostOK(map[string]any{}), nil
+func TestExecuteStreamErrorBodyReadUnderOpeningLimits(t *testing.T) {
+	// HTTP errors and 200 JSON errors are both still opening. A stalled body
+	// read must report the limit, even if the status alone is non-retryable.
+	for _, status := range []int{http.StatusOK, http.StatusBadRequest} {
+		for _, tc := range []struct {
+			name string
+			yaml string
+			want error
+		}{
+			{"request-timeout", "request-timeout: 30ms\nmax-stream-duration: 10s\n", errStreamOpenTimeout},
+			{"max-stream-duration", "request-timeout: 10s\nmax-stream-duration: 30ms\n", errMaxStreamDuration},
+		} {
+			t.Run(http.StatusText(status)+"/"+tc.name, func(t *testing.T) {
+				var once sync.Once
+				unblocked := make(chan struct{})
+				responder := wrapWithCatalog(testCatalogJSON, func(method string, _ []byte) ([]byte, error) {
+					switch method {
+					case pluginabi.MethodHostHTTPDoStream:
+						return hostOK(hostStreamStartResp{
+							StatusCode: status,
+							Headers:    http.Header{"Content-Type": []string{"application/json"}},
+							StreamID:   "up-error-stall",
+						}), nil
+					case pluginabi.MethodHostHTTPStreamRead:
+						<-unblocked
+						return hostOK(hostStreamReadResp{Done: true}), nil
+					case pluginabi.MethodHostHTTPStreamClose:
+						once.Do(func() { close(unblocked) })
+						return hostOK(map[string]any{}), nil
+					default:
+						return hostOK(map[string]any{}), nil
+					}
+				})
+				start := time.Now()
+				env, _ := runLimitedStream(t, tc.yaml+"stream-idle-timeout: 10s\n", responder)
+				if env.OK || env.Error == nil {
+					t.Fatalf("want error envelope, got %+v", env)
+				}
+				if env.Error.Code != string(errclass.ClassNetwork) || !env.Error.Retryable ||
+					!strings.Contains(env.Error.Message, tc.want.Error()) {
+					t.Fatalf("envelope error = %+v, want retryable %v", env.Error, tc.want)
+				}
+				if elapsed := time.Since(start); elapsed > 2*time.Second {
+					t.Fatalf("stalled error body read took %v", elapsed)
+				}
+			})
 		}
-	})
-	start := time.Now()
-	env, _ := runLimitedStream(t, "request-timeout: 30ms\nstream-idle-timeout: 10s\n", responder)
-	if env.OK || env.Error == nil {
-		t.Fatalf("want error envelope, got %+v", env)
-	}
-	if !strings.Contains(env.Error.Message, "stream did not open within request-timeout") {
-		t.Fatalf("envelope error = %+v", env.Error)
-	}
-	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Fatalf("stalled JSON body read took %v", elapsed)
 	}
 }
 
@@ -199,17 +213,52 @@ func newTestLimits(idle time.Duration) (*streamLimits, context.Context) {
 func TestStreamLimitsLateOpenTimerIgnoredAfterOpen(t *testing.T) {
 	l, ctx := newTestLimits(time.Hour)
 	defer l.stop()
-	l.opened()
+	if err := l.opened(ctx); err != nil {
+		t.Fatal(err)
+	}
 	l.openExpired() // a callback already running when the stream opened
 	if err := context.Cause(ctx); err != nil {
 		t.Fatalf("open timer canceled an opened stream: %v", err)
 	}
 }
 
+func TestStreamLimitsRejectsCanceledOpening(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		expire func(*streamLimits)
+		want   error
+	}{
+		{"request-timeout", (*streamLimits).openExpired, errStreamOpenTimeout},
+		{"max-stream-duration", (*streamLimits).maxDurationExpired, errMaxStreamDuration},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l, ctx := newTestLimits(time.Hour)
+			defer l.stop()
+			// The host returned success, but a limit fired before the executor
+			// could accept that result. This must remain an opening failure.
+			tc.expire(l)
+			if err := l.opened(ctx); !errors.Is(err, tc.want) {
+				t.Fatalf("opening error = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestStreamLimitsLateMaxDurationTimerIgnoredAfterStop(t *testing.T) {
+	l, ctx := newTestLimits(time.Hour)
+	l.stop()
+	l.maxDurationExpired() // a callback already running when the stream stopped
+	if err := context.Cause(ctx); err != nil {
+		t.Fatalf("max-duration timer canceled a stopped stream: %v", err)
+	}
+}
+
 func TestStreamLimitsIdleExcludesDownstreamDelivery(t *testing.T) {
 	l, ctx := newTestLimits(30 * time.Millisecond)
 	defer l.stop()
-	l.opened()
+	if err := l.opened(ctx); err != nil {
+		t.Fatal(err)
+	}
 	l.readStarted()
 	l.readDone(true)
 	time.Sleep(80 * time.Millisecond) // delivering the chunk downstream
@@ -230,7 +279,9 @@ func TestStreamLimitsIdleExcludesDownstreamDelivery(t *testing.T) {
 func TestStreamLimitsEmptyReadKeepsIdleDeadline(t *testing.T) {
 	l, ctx := newTestLimits(60 * time.Millisecond)
 	defer l.stop()
-	l.opened()
+	if err := l.opened(ctx); err != nil {
+		t.Fatal(err)
+	}
 	deadline := time.Now().Add(time.Second)
 	for context.Cause(ctx) == nil && time.Now().Before(deadline) {
 		l.readStarted()

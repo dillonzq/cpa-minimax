@@ -781,8 +781,15 @@ func TestExecuteStream4xxWatchdogUnblocksStalledRead(t *testing.T) {
 		t.Fatalf("execute_stream: %v", err)
 	}
 	env := decodeEnv(t, resp)
-	if env.OK || env.Error == nil || env.Error.HTTPStatus != http.StatusBadRequest {
-		t.Fatalf("want 400 error envelope, got: %+v", env)
+	if env.OK || env.Error == nil || env.Error.Code != string(errclass.ClassNetwork) ||
+		!env.Error.Retryable || !strings.Contains(env.Error.Message, errStreamOpenTimeout.Error()) {
+		t.Fatalf("want retryable opening-timeout error envelope, got: %+v", env)
+	}
+	if got := len(f.callsOf(pluginabi.MethodHostHTTPStreamClose)); got != 1 {
+		t.Fatalf("upstream closes = %d, want 1", got)
+	}
+	if got := len(f.callsOf(pluginabi.MethodHostStreamClose)); got != 0 {
+		t.Fatalf("downstream must stay host-owned pre-first-byte, closes = %d", got)
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("stalled read took too long to unblock: %v", elapsed)

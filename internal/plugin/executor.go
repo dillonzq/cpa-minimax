@@ -272,25 +272,34 @@ func (m *Manager) executeStream(req executorRequest) ([]byte, error) {
 	}
 	// An error status or a JSON error body is read under the opening limit.
 	if st >= 400 {
-		return classEnvelope(errclass.UpstreamStatusError(st, m.readStreamErrorBody(ctx, id))), nil
+		body := m.readStreamErrorBody(ctx, id)
+		if cause := openLimitCause(ctx); cause != nil {
+			return classEnvelope(errclass.FromNetwork(cause)), nil
+		}
+		return classEnvelope(errclass.UpstreamStatusError(st, body)), nil
 	}
 	// MiniMax can answer a stream request with a plain JSON base_resp error
 	// under HTTP 200. Classify it before the first byte so CPA can cool the
 	// credential down and retry another one.
 	if isJSONContentType(headers.Get("Content-Type")) {
 		body := m.readStreamErrorBody(ctx, id)
-		if eErr := errclass.BaseRespError(body); eErr != nil {
-			return classEnvelope(eErr), nil
-		}
 		if cause := openLimitCause(ctx); cause != nil {
 			return classEnvelope(errclass.FromNetwork(cause)), nil
+		}
+		if eErr := errclass.BaseRespError(body); eErr != nil {
+			return classEnvelope(eErr), nil
 		}
 		return classEnvelope(errclass.UpstreamFallback("stream request returned a JSON body instead of an event stream")), nil
 	}
 
 	// End the opening phase once the event stream is known to be open, so a
 	// late open timer cannot cancel it.
-	limits.opened()
+	if err := limits.opened(ctx); err != nil {
+		if id != "" {
+			_ = m.bridge.StreamClose(id)
+		}
+		return classEnvelope(errclass.FromNetwork(err)), nil
+	}
 	downID := req.StreamID
 	owned = true
 	m.work.Add(1) // the admitted handler still holds a work count
@@ -387,7 +396,7 @@ func startStreamLimits(cancel context.CancelCauseFunc, cfg config.Config) *strea
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.open = time.AfterFunc(cfg.RequestTimeout, l.openExpired)
-	l.ceiling = time.AfterFunc(cfg.MaxStreamDuration, func() { cancel(errMaxStreamDuration) })
+	l.ceiling = time.AfterFunc(cfg.MaxStreamDuration, l.maxDurationExpired)
 	return l
 }
 
@@ -399,17 +408,31 @@ func (l *streamLimits) openExpired() {
 	}
 }
 
-// opened ends the opening phase and starts the idle limit.
-func (l *streamLimits) opened() {
+func (l *streamLimits) maxDurationExpired() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.phase != streamStopped {
+		l.cancel(errMaxStreamDuration)
+	}
+}
+
+// opened accepts a successful upstream response only if no limit has already
+// canceled it. The cause check and phase transition share the timers' lock,
+// so an opening timeout cannot slip between that check and acceptance.
+func (l *streamLimits) opened(ctx context.Context) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if cause := context.Cause(ctx); cause != nil {
+		return cause
+	}
 	if l.phase != streamOpening {
-		return
+		return nil
 	}
 	l.phase = streamOpen
 	l.open.Stop()
 	l.deadline = time.Now().Add(l.idleFor)
 	l.idle = time.AfterFunc(l.idleFor, l.idleExpired)
+	return nil
 }
 
 // readStarted marks a wait on the upstream. A chunk returned by the previous
@@ -457,10 +480,10 @@ func (l *streamLimits) idleExpired() {
 }
 
 func (l *streamLimits) stop() {
-	l.ceiling.Stop()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.phase = streamStopped
+	l.ceiling.Stop()
 	l.open.Stop()
 	if l.idle != nil {
 		l.idle.Stop()
