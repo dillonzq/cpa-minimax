@@ -25,10 +25,10 @@
 
 A native Go plugin for [CLIProxyAPI](https://help.router-for.me/plugin/development) (CPA) that connects MiniMax subscription and pay-as-you-go keys through one provider.
 
-- Chat Completions, Messages, Responses, and Gemini clients, including streaming, through [apix](https://github.com/dillonzq/apix/tree/v0.2.0).
+- Chat Completions, Messages, Responses, and Gemini clients, including streaming, through [apix](https://github.com/dillonzq/apix/tree/v0.4.0).
 - International and China mainland credentials in one pool, with shared and per-key upstream addresses.
 - Subscription-first scheduling through CPA priorities, error-based cooldowns, and native quota reporting.
-- Built-in MiniMax-M3.1-Flash and MiniMax-M3, optional model discovery, thinking controls, and Claude-format token counting.
+- Built-in MiniMax-M3.1-Flash and MiniMax-M3, optional model discovery, thinking controls, and token counting for Claude, Gemini, and Responses requests.
 
 **Plugin ID:** `cpa-minimax` · **Provider and default model prefix:** `minimax`
 

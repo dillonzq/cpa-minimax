@@ -293,6 +293,43 @@ func TestCountTokensUsesMessagesCounter(t *testing.T) {
 	}
 }
 
+func TestCountTokensConvertsOtherClients(t *testing.T) {
+	for _, tc := range []struct {
+		format, body, want string
+	}{
+		{"gemini", `{"generateContentRequest":{"model":"models/x","systemInstruction":{"parts":[{"text":"sys"}]},"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":64}}}`, `{"totalTokens":42}`},
+		{"gemini", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`, `{"totalTokens":42}`},
+		{"openai-response", `{"model":"x","instructions":"sys","input":"hi","max_output_tokens":64}`, `{"object":"response.input_tokens","input_tokens":42}`},
+	} {
+		t.Run(tc.format, func(t *testing.T) {
+			m, f := newMiniMaxManager(t, "api-keys:\n  - value: "+testKey+"\n    region: cn\n    base-url: https://counter-key.test/v1\n", okJSON(`{"input_tokens":42,"base_resp":{"status_code":0}}`))
+			env := decodeEnv(t, mustHandle(t, m, pluginabi.MethodExecutorCountTokens, countTokensRequest("minimax/MiniMax-M3", tc.format, tc.body)))
+			if !env.OK {
+				t.Fatalf("count_tokens: %+v", env.Error)
+			}
+			var out pluginapi.ExecutorResponse
+			decodeResult(t, mustJSON(env), &out)
+			if string(out.Payload) != tc.want {
+				t.Fatalf("payload = %s", out.Payload)
+			}
+			wire := lastHTTPRequest(t, f, pluginabi.MethodHostHTTPDo)
+			if wire.URL != "https://counter-key.test/anthropic/v1/messages/count_tokens" {
+				t.Fatalf("url = %s", wire.URL)
+			}
+			var sent map[string]json.RawMessage
+			if err := json.Unmarshal(wire.Body, &sent); err != nil {
+				t.Fatal(err)
+			}
+			if string(sent["model"]) != `"MiniMax-M3"` || sent["messages"] == nil || sent["max_tokens"] != nil {
+				t.Fatalf("counter body = %s", wire.Body)
+			}
+			if strings.Contains(tc.body, "sys") && sent["system"] == nil {
+				t.Fatalf("counter body lost the system prompt: %s", wire.Body)
+			}
+		})
+	}
+}
+
 func TestCountTokensRejectsUnsupportedRequests(t *testing.T) {
 	m, f := newMiniMaxManager(t, "api-keys:\n  - value: "+testKey+"\n"+testModelsYAML, okJSON(`{"input_tokens":1}`))
 	before := len(f.callsOf(pluginabi.MethodHostHTTPDo))

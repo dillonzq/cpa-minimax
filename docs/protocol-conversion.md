@@ -4,7 +4,7 @@
 
 [Integration](#integration) · [Native compatibility](#native-upstream-compatibility) · [Request policy](#minimax-request-policy) · [Conversion limits](#cross-protocol-behavior) · [Thinking suffixes](#thinking-suffixes) · [Streaming and failures](#sse-and-failures)
 
-Requests, regular responses, and streaming responses use pinned [apix v0.2.0](https://github.com/dillonzq/apix/tree/v0.2.0). Clients may use Chat Completions, Messages, Responses, or Gemini GenerateContent; MiniMax serves Chat Completions, Messages, and Responses upstream. See the library's [LLM protocol guide](https://github.com/dillonzq/apix/blob/v0.2.0/docs/protocols/llm.md) and [Gemini protocol guide](https://github.com/dillonzq/apix/blob/v0.2.0/docs/protocols/gemini.md) for field mappings and limits. This document describes the plugin's host and upstream policies.
+Requests, regular responses, and streaming responses use pinned [apix v0.4.0](https://github.com/dillonzq/apix/tree/v0.4.0). Clients may use Chat Completions, Messages, Responses, or Gemini GenerateContent; MiniMax serves Chat Completions, Messages, and Responses upstream. See the library's [LLM protocol guide](https://github.com/dillonzq/apix/blob/v0.4.0/docs/protocols/llm.md) and [token counting guide](https://github.com/dillonzq/apix/blob/v0.4.0/docs/protocols/tokens.md) for field mappings and limits. This document describes the plugin's host and upstream policies.
 
 ## Integration
 
@@ -15,6 +15,8 @@ The upstream protocol is chosen per request from the model's protocol set: the `
 Each execution owns a separate apix exchange shared by request and response conversion. The default is LossPolicyAllow, which collects known library loss diagnostics without rejecting solely for those losses. Protocol errors and unrepresentable actual output still fail.
 
 The plugin retains HTTP, authentication, region routing, cancellation, timeouts, response byte limits, and CPA error envelopes. Every protocol uses `Authorization: Bearer`; Messages also sends `anthropic-version: 2023-06-01`. Each request uses the selected credential's `base-url` override, then an explicit shared `base-url`, then its region's default host.
+
+`executor.count_tokens` always uses the MiniMax Messages counter (`/anthropic/v1/messages/count_tokens`), so the model must serve Messages. Claude count requests keep their body apart from the model and drop generation controls such as `max_tokens` and `stream`. Gemini `countTokens` (`contents` or `generateContentRequest`) and Responses `input_tokens` requests are converted by apix, so system instructions and tools are counted too; the reply returns in the client format (`totalTokens` for Gemini). Chat Completions has no counting protocol and is rejected before contacting upstream.
 
 ## Native upstream compatibility
 
