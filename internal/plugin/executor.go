@@ -9,9 +9,12 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
@@ -242,11 +245,16 @@ func (m *Manager) executeStream(req executorRequest) ([]byte, error) {
 	}
 	url := res.route.URL(res.baseURL)
 	debugTrace("executor sending stream url=%s body_len=%d", url, len(upstreamBody))
-	ctx, cancel := context.WithTimeout(withHostCallbackScope(m.workContext(), req.HostCallbackID), res.cfg.RequestTimeout)
+	// The context passed to DoStream owns the host HTTP operation for the
+	// whole stream, so it cannot carry the opening deadline: each limit
+	// cancels it with its own cause instead.
+	ctx, cancel := context.WithCancelCause(withHostCallbackScope(m.workContext(), req.HostCallbackID))
+	limits := startStreamLimits(cancel, res.cfg)
 	owned := false
 	defer func() {
 		if !owned {
-			cancel()
+			limits.stop()
+			cancel(nil)
 		}
 	}()
 	st, headers, id, err := m.bridge.DoStream(ctx, pluginapi.HTTPRequest{
@@ -257,22 +265,41 @@ func (m *Manager) executeStream(req executorRequest) ([]byte, error) {
 	})
 	debugTrace("executor stream DoStream status=%d upstreamID=%s err=%v", st, id, err)
 	if err != nil {
+		if cause := openLimitCause(ctx); cause != nil {
+			err = fmt.Errorf("%w: %w", cause, err)
+		}
 		return classEnvelope(errclass.FromNetwork(err)), nil
 	}
+	// An error status or a JSON error body is read under the opening limit.
 	if st >= 400 {
-		return classEnvelope(errclass.UpstreamStatusError(st, m.readStreamErrorBody(ctx, id))), nil
+		body := m.readStreamErrorBody(ctx, id)
+		if cause := openLimitCause(ctx); cause != nil {
+			return classEnvelope(errclass.FromNetwork(cause)), nil
+		}
+		return classEnvelope(errclass.UpstreamStatusError(st, body)), nil
 	}
 	// MiniMax can answer a stream request with a plain JSON base_resp error
 	// under HTTP 200. Classify it before the first byte so CPA can cool the
 	// credential down and retry another one.
 	if isJSONContentType(headers.Get("Content-Type")) {
 		body := m.readStreamErrorBody(ctx, id)
+		if cause := openLimitCause(ctx); cause != nil {
+			return classEnvelope(errclass.FromNetwork(cause)), nil
+		}
 		if eErr := errclass.BaseRespError(body); eErr != nil {
 			return classEnvelope(eErr), nil
 		}
 		return classEnvelope(errclass.UpstreamFallback("stream request returned a JSON body instead of an event stream")), nil
 	}
 
+	// End the opening phase once the event stream is known to be open, so a
+	// late open timer cannot cancel it.
+	if err := limits.opened(ctx); err != nil {
+		if id != "" {
+			_ = m.bridge.StreamClose(id)
+		}
+		return classEnvelope(errclass.FromNetwork(err)), nil
+	}
 	downID := req.StreamID
 	owned = true
 	m.work.Add(1) // the admitted handler still holds a work count
@@ -281,11 +308,12 @@ func (m *Manager) executeStream(req executorRequest) ([]byte, error) {
 	}
 	go func() {
 		defer m.work.Done()
-		defer cancel()
+		defer cancel(nil)
+		defer limits.stop()
 		if m.bridge != nil {
 			defer m.bridge.inFlight.Done()
 		}
-		m.pumpStreamContext(ctx, downID, id, res, conv)
+		m.pumpStreamContext(ctx, downID, id, res, conv, limits)
 	}()
 	return okEnvelope(struct{}{}), nil
 }
@@ -330,7 +358,158 @@ func isJSONContentType(value string) bool {
 	return strings.TrimSpace(mediaType) == "application/json"
 }
 
-func (m *Manager) pumpStreamContext(ctx context.Context, downID, upstreamID string, res *resolvedExecution, conv streamConverter) {
+var (
+	errStreamOpenTimeout = errors.New("stream did not open within request-timeout")
+	errStreamIdleTimeout = errors.New("stream exceeded stream-idle-timeout")
+	errMaxStreamDuration = errors.New("stream exceeded max-stream-duration")
+)
+
+type streamPhase int
+
+const (
+	streamOpening streamPhase = iota
+	streamOpen
+	streamStopped
+)
+
+// streamLimits cancels a stream's context with the cause of the limit it
+// hit: request-timeout until the upstream event stream opens, then
+// stream-idle-timeout while waiting on the upstream for a chunk, and
+// max-stream-duration throughout. Timer callbacks re-check the phase under
+// mu, so a limit that fires as its phase ends cannot cancel the next one.
+type streamLimits struct {
+	cancel  context.CancelCauseFunc
+	idleFor time.Duration
+	ceiling *time.Timer
+
+	mu       sync.Mutex
+	phase    streamPhase
+	open     *time.Timer
+	idle     *time.Timer
+	reading  bool      // a read is waiting on the upstream
+	received bool      // the last read returned data
+	deadline time.Time // idle deadline of the current silence
+}
+
+func startStreamLimits(cancel context.CancelCauseFunc, cfg config.Config) *streamLimits {
+	l := &streamLimits{cancel: cancel, idleFor: cfg.StreamIdleTimeout}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.open = time.AfterFunc(cfg.RequestTimeout, l.openExpired)
+	l.ceiling = time.AfterFunc(cfg.MaxStreamDuration, l.maxDurationExpired)
+	return l
+}
+
+func (l *streamLimits) openExpired() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.phase == streamOpening {
+		l.cancel(errStreamOpenTimeout)
+	}
+}
+
+func (l *streamLimits) maxDurationExpired() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.phase != streamStopped {
+		l.cancel(errMaxStreamDuration)
+	}
+}
+
+// opened accepts a successful upstream response only if no limit has already
+// canceled it. The cause check and phase transition share the timers' lock,
+// so an opening timeout cannot slip between that check and acceptance.
+func (l *streamLimits) opened(ctx context.Context) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if cause := context.Cause(ctx); cause != nil {
+		return cause
+	}
+	if l.phase != streamOpening {
+		return nil
+	}
+	l.phase = streamOpen
+	l.open.Stop()
+	l.deadline = time.Now().Add(l.idleFor)
+	l.idle = time.AfterFunc(l.idleFor, l.idleExpired)
+	return nil
+}
+
+// readStarted marks a wait on the upstream. A chunk returned by the previous
+// read restarts the idle limit; time spent delivering it downstream does
+// not count as upstream silence.
+func (l *streamLimits) readStarted() {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.phase != streamOpen {
+		return
+	}
+	l.reading = true
+	if l.received {
+		l.received = false
+		l.deadline = time.Now().Add(l.idleFor)
+	}
+	l.idle.Reset(time.Until(l.deadline))
+}
+
+// readDone ends a wait on the upstream; gotData reports a non-empty chunk.
+func (l *streamLimits) readDone(gotData bool) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.reading = false
+	l.received = l.received || gotData
+}
+
+func (l *streamLimits) idleExpired() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.phase != streamOpen || !l.reading {
+		return // readStarted re-arms the timer for the next wait
+	}
+	if wait := time.Until(l.deadline); wait > 0 {
+		l.idle.Reset(wait)
+		return
+	}
+	l.cancel(errStreamIdleTimeout)
+}
+
+func (l *streamLimits) stop() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.phase = streamStopped
+	l.ceiling.Stop()
+	l.open.Stop()
+	if l.idle != nil {
+		l.idle.Stop()
+	}
+}
+
+// openLimitCause returns the limit that ended a stream's opening, if any.
+func openLimitCause(ctx context.Context) error {
+	if cause := context.Cause(ctx); errors.Is(cause, errStreamOpenTimeout) || errors.Is(cause, errMaxStreamDuration) {
+		return cause
+	}
+	return nil
+}
+
+// streamStopMessage is the downstream error for a stream whose context ended.
+func streamStopMessage(ctx context.Context) string {
+	cause := context.Cause(ctx)
+	for _, limit := range []error{errStreamOpenTimeout, errStreamIdleTimeout, errMaxStreamDuration} {
+		if errors.Is(cause, limit) {
+			return limit.Error()
+		}
+	}
+	return "stream canceled"
+}
+
+func (m *Manager) pumpStreamContext(ctx context.Context, downID, upstreamID string, res *resolvedExecution, conv streamConverter, limits *streamLimits) {
 	var closeOnce sync.Once
 	closeStreams := func(downErrMsg string) {
 		closeOnce.Do(func() {
@@ -346,7 +525,7 @@ func (m *Manager) pumpStreamContext(ctx context.Context, downID, upstreamID stri
 		defer close(watchExited)
 		select {
 		case <-ctx.Done():
-			closeStreams("stream canceled or exceeded request-timeout")
+			closeStreams(streamStopMessage(ctx))
 		case <-watchDone:
 		}
 	}()
@@ -358,11 +537,13 @@ func (m *Manager) pumpStreamContext(ctx context.Context, downID, upstreamID stri
 		convDone       bool
 	)
 	for {
+		limits.readStarted()
 		payload, readErrMsg, closed, err := m.bridge.StreamRead(upstreamID)
+		limits.readDone(len(payload) > 0)
 		debugTrace("executor stream read chunk_len=%d closed=%t readErrMsg=%q err=%v", len(payload), closed, readErrMsg, err)
 		upstreamClosed = closed
 		if ctx.Err() != nil {
-			closeStreams("stream canceled or exceeded request-timeout")
+			closeStreams(streamStopMessage(ctx))
 			return
 		}
 		if err != nil {

@@ -44,6 +44,8 @@ const (
 	DefaultModelPrefix      = "minimax"
 	DefaultRefreshInterval  = 15 * time.Minute
 	DefaultRequestTimeout   = 5 * time.Minute
+	DefaultStreamIdle       = 5 * time.Minute
+	DefaultMaxStream        = time.Hour
 	DefaultMaxResponseBytes = int64(67108864) // 64 MiB
 	// SubscriptionKeyPrefix is the observed M Plan key prefix. It only
 	// decides the default type; an explicit type always wins.
@@ -94,8 +96,16 @@ type Config struct {
 	Protocols        map[string]ProtocolOverride // endpoints for every model; switches live on models
 	Quota            Quota
 	AllowHTTP        bool
-	RequestTimeout   time.Duration
-	MaxResponseBytes int64
+	// RequestTimeout bounds a whole non-streaming request, or a stream's
+	// opening until the upstream event stream is confirmed, error bodies
+	// included.
+	RequestTimeout time.Duration
+	// StreamIdleTimeout bounds the silence between upstream stream chunks;
+	// each chunk restarts it.
+	StreamIdleTimeout time.Duration
+	// MaxStreamDuration bounds one stream's whole lifetime, opening included.
+	MaxStreamDuration time.Duration
+	MaxResponseBytes  int64
 }
 
 type ModelOverride struct {
@@ -138,6 +148,8 @@ type rawConfig struct {
 	} `yaml:"quota"`
 	AllowHTTP        bool    `yaml:"allow-http"`
 	RequestTimeout   *string `yaml:"request-timeout"`
+	StreamIdle       *string `yaml:"stream-idle-timeout"`
+	MaxStream        *string `yaml:"max-stream-duration"`
 	MaxResponseBytes *int64  `yaml:"max-response-bytes"`
 }
 
@@ -205,12 +217,17 @@ func Load(yamlBytes []byte) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	requestTimeout, err := parseDuration("request-timeout", raw.RequestTimeout, DefaultRequestTimeout)
+	requestTimeout, err := parsePositiveDuration("request-timeout", raw.RequestTimeout, DefaultRequestTimeout)
 	if err != nil {
 		return Config{}, err
 	}
-	if requestTimeout <= 0 {
-		return Config{}, fmt.Errorf("request-timeout: must be positive")
+	streamIdle, err := parsePositiveDuration("stream-idle-timeout", raw.StreamIdle, DefaultStreamIdle)
+	if err != nil {
+		return Config{}, err
+	}
+	maxStream, err := parsePositiveDuration("max-stream-duration", raw.MaxStream, DefaultMaxStream)
+	if err != nil {
+		return Config{}, err
 	}
 	c := Config{
 		Models:           raw.Models,
@@ -232,9 +249,11 @@ func Load(yamlBytes []byte) (Config, error) {
 			UsageCount: strings.ToLower(strings.TrimSpace(orDefault(raw.Quota.UsageCount, UsageCountRemaining))),
 			Endpoints:  raw.Quota.Endpoints,
 		},
-		AllowHTTP:        raw.AllowHTTP,
-		RequestTimeout:   requestTimeout,
-		MaxResponseBytes: orDefault(raw.MaxResponseBytes, DefaultMaxResponseBytes),
+		AllowHTTP:         raw.AllowHTTP,
+		RequestTimeout:    requestTimeout,
+		StreamIdleTimeout: streamIdle,
+		MaxStreamDuration: maxStream,
+		MaxResponseBytes:  orDefault(raw.MaxResponseBytes, DefaultMaxResponseBytes),
 	}
 	if c.Quota.Endpoints == nil {
 		c.Quota.Endpoints = slices.Clone(DefaultQuotaEndpoints)
@@ -484,6 +503,17 @@ func parseDuration(name string, p *string, def time.Duration) (time.Duration, er
 	d, err := time.ParseDuration(*p)
 	if err != nil {
 		return 0, fmt.Errorf("%s: invalid duration", name)
+	}
+	return d, nil
+}
+
+func parsePositiveDuration(name string, p *string, def time.Duration) (time.Duration, error) {
+	d, err := parseDuration(name, p, def)
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("%s: must be positive", name)
 	}
 	return d, nil
 }

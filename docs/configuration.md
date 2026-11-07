@@ -54,7 +54,9 @@ plugins:
           - /v1/token_plan/remains
           - /v1/api/openplatform/coding_plan/remains
 
-      request-timeout: 5m
+      request-timeout: 5m            # non-streaming request, or stream opening
+      stream-idle-timeout: 5m        # max silence between stream chunks
+      max-stream-duration: 1h        # max lifetime of one stream
       max-response-bytes: 67108864
       allow-http: false
 ```
@@ -107,7 +109,9 @@ Only key `value` fields expand `${ENV_VAR}`; `base-url` and other fields do not.
 | `models` | `[]object` | `[]` | Metadata overrides and declarations by upstream `name`: `alias`, `display-name`, `description`, `max-context-length`, `max-tokens`, `input-modalities`, `output-modalities`, `thinking` (`min`, `max`, `zero-allowed`, `dynamic-allowed`, `levels`), and `protocols`. |
 | `quota.usage-count` | `string` | `remaining` | How to read `*_usage_count` when no `*_remaining_percent` is present. Explicit remaining percentages take precedence and are never inverted. |
 | `quota.endpoints` | `[]string` | see example | Remains paths tried in order. The default quota host is `https://www.minimax.cn` (cn) or `https://www.minimax.io` (global); explicit per-key/shared `base-url` overrides apply. |
-| `request-timeout` | `duration` | `5m` | Deadline for opening and consuming an upstream request. |
+| `request-timeout` | `duration` | `5m` | Deadline for a whole non-streaming request, or for opening a stream (until the upstream status arrives, including reading an error body). It does not limit an open stream. Expiry cancels the host operation. Must be positive. |
+| `stream-idle-timeout` | `duration` | `5m` | Maximum silence between upstream stream chunks, starting once the stream opens; each chunk restarts it, and time spent delivering a chunk downstream does not count. Expiry ends the stream with an error. Must be positive. |
+| `max-stream-duration` | `duration` | `1h` | Maximum lifetime of one stream, counted from the start of opening, however active it is. Must be positive. |
 | `max-response-bytes` | `int64` | `67108864` | Maximum response size; a stream counts all of its chunks. |
 | `allow-http` | `bool` | `false` | Permit `http://` hosts for local testing. |
 
