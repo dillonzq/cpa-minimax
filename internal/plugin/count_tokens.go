@@ -18,7 +18,7 @@ import (
 var countTokensFields = []string{"model", "messages", "system", "tools", "tool_choice", "thinking"}
 
 // handleCountTokens implements executor.count_tokens on models served
-// through Messages. apix converts Claude, Gemini and Responses count requests
+// through Messages. apix converts Claude, Google and Responses count requests
 // to the MiniMax Messages counter and its {"input_tokens":N} reply back to the
 // client's format. Chat Completions has no counting protocol.
 func (m *Manager) handleCountTokens(request []byte) ([]byte, error) {

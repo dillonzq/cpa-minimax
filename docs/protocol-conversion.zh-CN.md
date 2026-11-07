@@ -4,19 +4,19 @@
 
 [插件接入](#插件接入) · [原生兼容](#原生请求的上游兼容规则) · [请求策略](#minimax-请求策略) · [跨协议能力](#跨协议能力) · [思考后缀](#思考后缀) · [流式与错误](#sse-与错误处理)
 
-请求、普通响应和流式响应使用固定版本的 [apix v0.4.0](https://github.com/dillonzq/apix/tree/v0.4.0)。客户端可使用 Chat Completions、Messages、Responses 或 Gemini GenerateContent；MiniMax 上游提供 Chat Completions、Messages 和 Responses。详细字段映射和限制见[库的 LLM 协议说明](https://github.com/dillonzq/apix/blob/v0.4.0/docs/protocols/llm.zh-CN.md)和 [Token 计数说明](https://github.com/dillonzq/apix/blob/v0.4.0/docs/protocols/tokens.zh-CN.md)。本文补充插件的宿主和上游兼容行为。
+请求、普通响应和流式响应使用固定版本的 [apix v0.4.0](https://github.com/dillonzq/apix/tree/v0.4.0)。客户端可使用 Chat Completions、Messages、Responses 或 Google GenerateContent；MiniMax 上游提供 Chat Completions、Messages 和 Responses。详细字段映射和限制见[库的 LLM 协议说明](https://github.com/dillonzq/apix/blob/v0.4.0/docs/protocols/llm.zh-CN.md)和 [Token 计数说明](https://github.com/dillonzq/apix/blob/v0.4.0/docs/protocols/tokens.zh-CN.md)。本文补充插件的宿主和上游兼容行为。
 
 ## 插件接入
 
-CPA 的 `openai`、`claude`、`openai-response`、`gemini` 是客户端格式；前三者分别对应上游协议 `chat-completions`、`messages`、`responses`，Gemini 请求总是经过转换，默认转为 Messages。输入使用宿主有效 `Payload` 和 `SourceFormat`；仅缺省/null Payload 回退到 `OriginalRequest`，显式空 payload 不回放原始请求。`Format` 决定输出协议，可以与输入不同。未知格式在请求上游前报错。
+CPA 的 `openai`、`claude`、`openai-response`、`gemini` 是客户端格式；前三者分别对应上游协议 `chat-completions`、`messages`、`responses`，Google GenerateContent 请求总是经过转换，默认转为 Messages。输入使用宿主有效 `Payload` 和 `SourceFormat`；仅缺省/null Payload 回退到 `OriginalRequest`，显式空 payload 不回放原始请求。`Format` 决定输出协议，可以与输入不同。未知格式在请求上游前报错。
 
-上游协议按请求从模型的协议集合中选择：模型支持 `SourceFormat` 对应的协议时直接使用；否则按该格式的最小损失顺序，取模型支持的第一个协议（见[协议选择](../README.zh-CN.md#协议选择)）。Gemini 来源的流式模式取自宿主的 `Stream` 标志，转换时写入目标请求体的 `stream: true`。
+上游协议按请求从模型的协议集合中选择：模型支持 `SourceFormat` 对应的协议时直接使用；否则按该格式的最小损失顺序，取模型支持的第一个协议（见[协议选择](../README.zh-CN.md#协议选择)）。Google GenerateContent 来源的流式模式取自宿主的 `Stream` 标志，转换时写入目标请求体的 `stream: true`。
 
 每次执行独立创建一个 apix exchange，请求和响应共用工具身份映射。默认 `LossPolicyAllow`，允许已知请求损耗并收集库诊断。协议错误和无法表示的实际输出仍报错，不因 allow 而静默接受。
 
 HTTP、鉴权、地区路由、超时、取消、最大响应字节和 CPA 错误 envelope 由插件管理。所有协议都使用 `Authorization: Bearer`，Messages 另带 `anthropic-version: 2023-06-01`。每个请求按所选凭证的 `base-url` → 显式全局 `base-url` → 所属地区默认地址的优先级确定主机。
 
-`executor.count_tokens` 统一使用 MiniMax 的 Messages 计数端点（`/anthropic/v1/messages/count_tokens`），因此模型必须支持 Messages。Claude 计数请求除模型外保留原始 body，并去掉 `max_tokens`、`stream` 等生成控制参数。Gemini `countTokens`（`contents` 或 `generateContentRequest`）和 Responses `input_tokens` 请求由 apix 转换，系统指令和工具同样计入；结果按客户端格式返回（Gemini 为 `totalTokens`）。Chat Completions 没有计数协议，在请求上游前即被拒绝。
+`executor.count_tokens` 统一使用 MiniMax 的 Messages 计数端点（`/anthropic/v1/messages/count_tokens`），因此模型必须支持 Messages。Claude 计数请求除模型外保留原始 body，并去掉 `max_tokens`、`stream` 等生成控制参数。Google `countTokens`（`contents` 或 `generateContentRequest`）和 Responses `input_tokens` 请求由 apix 转换，系统指令和工具同样计入；结果按客户端格式返回（Google 为 `totalTokens`）。Chat Completions 没有计数协议，在请求上游前即被拒绝。
 
 ## 原生请求的上游兼容规则
 
@@ -71,7 +71,7 @@ HTTP、鉴权、地区路由、超时、取消、最大响应字节和 CPA 错�
 
 库处理任意网络分块、多 data 行和 LF/CRLF/CR，负责工具交错、晚到身份和 done/item/终止快照补尾去重。合成 Responses 事件带递增 sequence_number。
 
-库返回完整 SSE 帧。插件对 Chat 和 Gemini 输出使用 SSEDecoder 提取裸 JSON 并消费库的 DONE，由 CPA HTTP handler 包装 data，Chat handler 在正常关闭时发送一次 DONE；Messages/Responses 输出完整帧。SSE comment/retry/id/ping 不保证跨协议保留。
+库返回完整 SSE 帧。插件对 Chat 和 Google 输出使用 SSEDecoder 提取裸 JSON 并消费库的 DONE，由 CPA HTTP handler 包装 data，Chat handler 在正常关闭时发送一次 DONE；Messages/Responses 输出完整帧。SSE comment/retry/id/ping 不保证跨协议保留。
 
 Feed/Finish 同时返回事件和错误时，先发送已完成事件，再以错误关闭，不生成成功终止。EOF 且尚未完成时调用 Finish 校验有效终止；取消、超时和网络错误直接失败关闭。Chat finish_reason/DONE、Messages stop_reason/message_stop 可建立结束状态；Responses 需要合法终止事件。错误后不恢复转换或重发请求。库错误消息为空或纯空白时，桥接补充默认消息，防止 CPA 将空错误关闭当成正常结束。
 

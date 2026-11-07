@@ -82,7 +82,7 @@ type State struct {
 	// accept function tools.
 	NormalizeTools bool
 	// Stream is the host's streaming mode. GenerateContent carries it in the
-	// URL rather than the body, so only a Gemini source request takes it from
+	// URL rather than the body, so only a Google source request takes it from
 	// here; other sources keep their body's flag.
 	Stream bool
 
@@ -206,7 +206,7 @@ func NewStreamConverter(route catalog.Route, output string, state *State) (Strea
 	return &stream{converter: converter, bareJSON: to == openai.ChatCompletions || to == google.GenerateContent}, nil
 }
 
-// CPA frames Chat and Gemini JSON itself (and writes the Chat DONE); other
+// CPA frames Chat and Google JSON itself (and writes the Chat DONE); other
 // protocols accept complete SSE frames.
 func (s *stream) hostEvents(frames [][]byte) [][]byte {
 	if !s.bareJSON {

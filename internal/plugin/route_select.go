@@ -5,7 +5,7 @@ import "github.com/dillonzq/cpa-minimax/internal/catalog"
 // routePreference orders upstream protocols for each host input format: the
 // format's own protocol first (no conversion), then the others by increasing
 // semantic loss of the request conversion (apix docs/protocols/llm.md).
-// Gemini has no MiniMax endpoint; it converts to Messages, which MiniMax
+// Google GenerateContent has no MiniMax endpoint; it converts to Messages, which MiniMax
 // recommends for thinking blocks and interleaved thinking.
 var routePreference = map[string][]catalog.Route{
 	"openai":          {catalog.RouteChatCompletions, catalog.RouteResponses, catalog.RouteMessages},

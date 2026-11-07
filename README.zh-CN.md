@@ -25,10 +25,10 @@
 
 [CLIProxyAPI](https://help.router-for.me/plugin/development)（CPA）的原生 Go 插件，通过同一个 provider 接入 MiniMax 订阅 key 和按量付费 key。
 
-- 支持 Chat Completions、Messages、Responses、Gemini 客户端及流式输出，协议转换使用 [apix](https://github.com/dillonzq/apix/tree/v0.4.0)。
+- 支持 Chat Completions、Messages、Responses、Google GenerateContent 客户端及流式输出，协议转换使用 [apix](https://github.com/dillonzq/apix/tree/v0.4.0)。
 - 国际站和中国大陆站凭证共用一个池，支持全局及单 key 上游地址配置。
 - 通过 CPA 优先级先使用订阅额度，按错误冷却凭证，并接入 CPA 原生额度查询。
-- 内置 MiniMax-M3.1-Flash 和 MiniMax-M3，支持模型发现、思考控制及 Claude、Gemini、Responses 格式的 token 计数。
+- 内置 MiniMax-M3.1-Flash 和 MiniMax-M3，支持模型发现、思考控制及 Claude、Google、Responses 格式的 token 计数。
 
 **插件 ID：** `cpa-minimax` · **Provider 及默认模型前缀：** `minimax`
 
@@ -151,9 +151,9 @@ M2.5 和 M2.7 默认不发布，仅在发现结果包含它们或通过 `models`
 | Chat Completions | Chat Completions → Responses → Messages |
 | Responses | Responses → Chat Completions → Messages |
 | Messages | Messages → Responses → Chat Completions |
-| Gemini | Messages → Responses → Chat Completions |
+| Google GenerateContent | Messages → Responses → Chat Completions |
 
-客户端自身协议无需转换。MiniMax 没有 Gemini 端点，Gemini 请求转为 MiniMax 推荐的 Messages（支持 thinking 块和交错思考）。所有协议都使用 `Authorization: Bearer` 鉴权。
+客户端自身协议无需转换。MiniMax 没有 Google GenerateContent 端点，此类请求转为 MiniMax 推荐的 Messages（支持 thinking 块和交错思考）。所有协议都使用 `Authorization: Bearer` 鉴权。
 
 通过 `models[].protocols` 开关单个模型的路由，通过 `protocols` 全局覆盖端点路径。示例见[模型与协议覆盖](docs/configuration.zh-CN.md#模型与协议覆盖)，字段映射和转换损失见[协议转换说明](docs/protocol-conversion.zh-CN.md)。
 
