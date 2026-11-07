@@ -25,10 +25,10 @@
 
 A native Go plugin for [CLIProxyAPI](https://help.router-for.me/plugin/development) (CPA) that connects MiniMax subscription and pay-as-you-go keys through one provider.
 
-- Chat Completions, Messages, Responses, and Gemini clients, including streaming, through [apix](https://github.com/dillonzq/apix/tree/v0.2.0).
+- Chat Completions, Messages, Responses, and Google GenerateContent clients, including streaming, through [apix](https://github.com/dillonzq/apix/tree/v0.4.0).
 - International and China mainland credentials in one pool, with shared and per-key upstream addresses.
 - Subscription-first scheduling through CPA priorities, error-based cooldowns, and native quota reporting.
-- Built-in MiniMax-M3.1-Flash and MiniMax-M3, optional model discovery, thinking controls, and Claude-format token counting.
+- Built-in MiniMax-M3.1-Flash and MiniMax-M3, optional model discovery, thinking controls, and token counting for Claude, Google, and Responses requests.
 
 **Plugin ID:** `cpa-minimax` · **Provider and default model prefix:** `minimax`
 
@@ -151,9 +151,9 @@ Each request uses the first protocol the model serves in the client format's ord
 | Chat Completions | Chat Completions → Responses → Messages |
 | Responses | Responses → Chat Completions → Messages |
 | Messages | Messages → Responses → Chat Completions |
-| Gemini | Messages → Responses → Chat Completions |
+| Google GenerateContent | Messages → Responses → Chat Completions |
 
-The client's own protocol needs no conversion. Gemini has no MiniMax endpoint and converts to Messages, which MiniMax recommends for thinking blocks and interleaved thinking. All protocols authenticate with `Authorization: Bearer`.
+The client's own protocol needs no conversion. Google GenerateContent has no MiniMax endpoint and converts to Messages, which MiniMax recommends for thinking blocks and interleaved thinking. All protocols authenticate with `Authorization: Bearer`.
 
 Use `models[].protocols` to enable or disable one model’s routes, and `protocols` to override endpoint paths globally. See [Model and protocol overrides](docs/configuration.md#model-and-protocol-overrides) and the [protocol conversion guide](docs/protocol-conversion.md) for mappings and conversion losses.
 

@@ -232,7 +232,7 @@ func (m *Manager) executeStream(req executorRequest) ([]byte, error) {
 		return failEnv, nil
 	}
 	// This path always streams, whatever the request's Stream flag says, so
-	// a converted Gemini source must ask the upstream for a stream too.
+	// a converted Google source must ask the upstream for a stream too.
 	res.state.Stream = true
 	upstreamBody, eErr := buildUpstreamBody(res, req)
 	if eErr != nil {

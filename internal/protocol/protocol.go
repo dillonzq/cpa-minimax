@@ -6,14 +6,17 @@ import (
 
 	"github.com/dillonzq/apix"
 	"github.com/dillonzq/apix/protocol/anthropic"
-	"github.com/dillonzq/apix/protocol/gemini"
+	"github.com/dillonzq/apix/protocol/google"
 	"github.com/dillonzq/apix/protocol/openai"
 	"github.com/dillonzq/apix/sse"
 	"github.com/dillonzq/cpa-minimax/internal/catalog"
 	"github.com/dillonzq/cpa-minimax/internal/errclass"
 )
 
-var registry = mustRegistry(openai.ChatCompletionsCodec(), openai.ResponsesCodec(), anthropic.MessagesCodec(), gemini.GenerateContentCodec())
+var registry = mustRegistry(
+	openai.ChatCompletionsCodec(), openai.ResponsesCodec(), anthropic.MessagesCodec(), google.GenerateContentCodec(),
+	anthropic.MessagesCountTokensCodec(), openai.ResponsesInputTokensCodec(), google.CountTokensCodec(),
+)
 
 func mustRegistry(codecs ...apix.Codec) *apix.Registry {
 	reg, err := apix.NewRegistry(codecs...)
@@ -32,7 +35,7 @@ func Format(format string) (apix.Protocol, *errclass.Error) {
 	case "openai-response":
 		return openai.Responses, nil
 	case "gemini":
-		return gemini.GenerateContent, nil
+		return google.GenerateContent, nil
 	default:
 		return "", &errclass.Error{Class: errclass.ClassUnsupported, Message: "unsupported protocol format: " + format}
 	}
@@ -79,7 +82,7 @@ type State struct {
 	// accept function tools.
 	NormalizeTools bool
 	// Stream is the host's streaming mode. GenerateContent carries it in the
-	// URL rather than the body, so only a Gemini source request takes it from
+	// URL rather than the body, so only a Google source request takes it from
 	// here; other sources keep their body's flag.
 	Stream bool
 
@@ -148,7 +151,7 @@ func ConvertRequest(route catalog.Route, model, source string, body []byte, stat
 		return nil, err
 	}
 	payload := apix.Payload{Body: body}
-	if from == gemini.GenerateContent {
+	if from == google.GenerateContent {
 		payload.Metadata.Stream = &state.Stream
 	}
 	out, e := state.ex.ConvertRequest(payload, model)
@@ -200,10 +203,10 @@ func NewStreamConverter(route catalog.Route, output string, state *State) (Strea
 	if e != nil {
 		return nil, Error(e)
 	}
-	return &stream{converter: converter, bareJSON: to == openai.ChatCompletions || to == gemini.GenerateContent}, nil
+	return &stream{converter: converter, bareJSON: to == openai.ChatCompletions || to == google.GenerateContent}, nil
 }
 
-// CPA frames Chat and Gemini JSON itself (and writes the Chat DONE); other
+// CPA frames Chat and Google JSON itself (and writes the Chat DONE); other
 // protocols accept complete SSE frames.
 func (s *stream) hostEvents(frames [][]byte) [][]byte {
 	if !s.bareJSON {

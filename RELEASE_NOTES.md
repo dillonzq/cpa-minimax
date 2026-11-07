@@ -1,7 +1,17 @@
 # v0.2.2
 
-Stop `request-timeout` from cutting off active streams.
-Requires **CLIProxyAPI v8.0.0 or later**.
+Stop `request-timeout` from cutting off active streams, and count tokens for
+Google clients. Requires **CLIProxyAPI v8.0.0 or later**.
+
+## Features
+
+- `executor.count_tokens` now accepts Google `countTokens` requests (and
+  Responses `input_tokens` requests) as well as Claude ones. apix v0.4.0
+  converts them to the MiniMax Messages counter, counting system instructions
+  and tools, and returns the count in the client's format, such as
+  `{"totalTokens":N}` for Google. The model must still serve Messages.
+- Upgrade apix to v0.4.0. Conversion output is unchanged; SSE frames from the
+  upstream are now capped at 64 MiB each.
 
 ## Behavior changes
 

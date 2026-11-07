@@ -14,7 +14,7 @@ Describe the expected behavior and what happened instead.
 
 ### Reproduction
 
-- Client endpoint or format: Chat Completions / Messages / Responses / Gemini
+- Client endpoint or format: Chat Completions / Messages / Responses / Google GenerateContent
 - Model ID, including any thinking suffix:
 - Streaming: yes / no
 - Credential type and region: subscription / api; global / cn
