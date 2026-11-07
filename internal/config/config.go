@@ -2,7 +2,10 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/url"
 	"os"
@@ -133,13 +136,16 @@ func (p ProtocolOverride) IsEnabled() bool {
 
 // rawConfig mirrors the YAML shape; pointer fields distinguish "unset"
 // (apply default) from explicitly-set values including "" (validate as-is).
-// Unknown fields are ignored (host may pass extra keys).
+// Host-owned plugin controls are accepted alongside plugin settings.
 type rawConfig struct {
+	Enabled     *bool                       `yaml:"enabled"`
+	Priority    int                         `yaml:"priority"`
+	Store       map[string]any              `yaml:"store"`
 	Models      []ModelOverride             `yaml:"models"`
 	Region      *string                     `yaml:"region"`
 	BaseURL     *string                     `yaml:"base-url"`
 	ModelPrefix rawPrefix                   `yaml:"model-prefix"`
-	APIKeys     []rawKey                    `yaml:"api-keys"`
+	APIKeys     []rawAPIKey                 `yaml:"api-keys"`
 	Catalog     rawCatalog                  `yaml:"catalog"`
 	Protocols   map[string]ProtocolOverride `yaml:"protocols"`
 	Quota       struct {
@@ -158,7 +164,7 @@ type rawPrefix struct {
 	Value   *string `yaml:"value"`
 }
 
-type rawKey struct {
+type rawAPIKey struct {
 	Name     string  `yaml:"name"`
 	Value    string  `yaml:"value"`
 	Type     string  `yaml:"type"`
@@ -176,16 +182,23 @@ type rawCatalog struct {
 var validProtocols = map[string]bool{"chat-completions": true, "messages": true, "responses": true}
 
 // Load decodes YAML, expands ${VAR} references in api-key values only,
-// applies defaults, and validates. Decode errors never echo decoded node
-// values — a malformed entry (e.g. a bare-scalar API key) must not leak into
-// the invalid_config envelope the host logs.
+// applies defaults, and validates. Unknown settings are rejected. Decode
+// errors never echo decoded node values — a malformed entry (e.g. a
+// bare-scalar API key) must not leak into the invalid_config envelope the
+// host logs.
 func Load(yamlBytes []byte) (Config, error) {
 	var raw rawConfig
-	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(yamlBytes))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&raw); err != nil && !errors.Is(err, io.EOF) {
 		if n := regexp.MustCompile(`line (\d+)`).FindStringSubmatch(err.Error()); n != nil {
 			return Config{}, fmt.Errorf("decode config: invalid YAML structure near line %s", n[1])
 		}
 		return Config{}, fmt.Errorf("decode config: invalid YAML structure")
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return Config{}, fmt.Errorf("decode config: expected one YAML document")
 	}
 	region, ok := NormalizeRegion(orDefault(raw.Region, DefaultRegion))
 	if !ok {
@@ -368,6 +381,10 @@ func PublicID(c Config, upstreamID string) string {
 	return upstreamID
 }
 
+// validate checks a decoded config after defaults and ${VAR} expansion.
+// API-key values must be non-empty, unique and free of CR/LF, because each
+// value is sent as an upstream header. Errors name the field and never echo
+// a key value.
 func (c Config) validate() error {
 	if err := validateProtocols("protocols", c.Protocols, false); err != nil {
 		return err
@@ -408,6 +425,9 @@ func (c Config) validate() error {
 	for i, k := range c.APIKeys {
 		if k.Value == "" {
 			return fmt.Errorf("api-keys[%d].value: expanded to empty", i)
+		}
+		if strings.ContainsAny(k.Value, "\r\n") {
+			return fmt.Errorf("api-keys[%d]: headers must not contain newlines", i)
 		}
 		if seen[k.Value] {
 			return fmt.Errorf("api-keys: duplicate key values are not allowed")

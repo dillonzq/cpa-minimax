@@ -2,7 +2,7 @@
 
 [English](configuration.md) · [返回 README](../README.zh-CN.md#配置)
 
-插件配置位于 CPA `config.yaml` 的 `plugins.configs.cpa-minimax` 下，`plugins.enabled` 和 `plugins.configs.cpa-minimax.enabled` 都必须为 `true`。示例使用规范名称，兼容别名见文末。
+插件配置位于 CPA `config.yaml` 的 `plugins.configs.cpa-minimax` 下，`plugins.enabled` 和 `plugins.configs.cpa-minimax.enabled` 都必须为 `true`。未知配置项会被拒绝，拼错的键会直接加载失败，而不是静默回退到默认值。示例使用规范名称，兼容别名见文末。
 
 ## 完整配置示例
 

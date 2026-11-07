@@ -2,7 +2,7 @@
 
 [简体中文](configuration.zh-CN.md) · [README](../README.md#configuration)
 
-All plugin settings belong under `plugins.configs.cpa-minimax` in CPA’s `config.yaml`. Both `plugins.enabled` and `plugins.configs.cpa-minimax.enabled` must be `true`. Examples below use canonical names; accepted aliases are listed at the end.
+All plugin settings belong under `plugins.configs.cpa-minimax` in CPA’s `config.yaml`. Both `plugins.enabled` and `plugins.configs.cpa-minimax.enabled` must be `true`. Unknown settings are rejected, so a misspelled key fails to load instead of falling back to its default. Examples below use canonical names; accepted aliases are listed at the end.
 
 ## Full configuration example
 
