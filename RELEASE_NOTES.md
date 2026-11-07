@@ -22,6 +22,11 @@ Google clients. Requires **CLIProxyAPI v8.0.0 or later**.
   chunk for that long, restarting on every chunk and excluding time spent
   delivering chunks downstream; `max-stream-duration` (default `1h`) caps one
   stream's lifetime from the start of opening. Both must be positive.
+- Unknown settings under `plugins.configs.cpa-minimax` are now rejected with
+  `invalid_config` instead of being ignored, so a misspelled key no longer
+  falls back silently to its default. CPA's `enabled`, `priority` and `store`
+  keys are still accepted. A configuration with more than one YAML document,
+  or an API key value containing a line break, is also rejected.
 
 ## Fixes
 
@@ -37,9 +42,11 @@ Google clients. Requires **CLIProxyAPI v8.0.0 or later**.
 
 Download `cpa-minimax_0.2.2_<os>_<arch>.zip` for your CPA host and verify it
 against `checksums.txt`. Stop CPA before replacing the plugin library, then
-restart CPA. No configuration changes are required. A `request-timeout` raised
-only to keep long streams alive can return to its default; set
-`max-stream-duration` instead if streams may last over an hour.
+restart CPA. Valid configurations need no changes, but check the plugin
+settings for misspelled or obsolete keys first: they now stop the plugin from
+loading. A `request-timeout` raised only to keep long streams alive can return
+to its default; set `max-stream-duration` instead if streams may last over an
+hour.
 
 # v0.2.1
 
