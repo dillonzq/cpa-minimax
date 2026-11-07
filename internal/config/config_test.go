@@ -399,6 +399,8 @@ func TestLoadEnvExpansion(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsUnknownSettings checks that a misspelled or unsupported key
+// at any level, or a second YAML document, fails instead of using a default.
 func TestLoadRejectsUnknownSettings(t *testing.T) {
 	for name, doc := range map[string]string{
 		"top level":  withKey + "request-timout: 5m\n",
@@ -413,6 +415,8 @@ func TestLoadRejectsUnknownSettings(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsKeyWithNewline checks that an API key whose environment
+// value contains a line break is rejected rather than split into headers.
 func TestLoadRejectsKeyWithNewline(t *testing.T) {
 	t.Setenv("TEST_MM_SPLIT_KEY", "sk-a\nsk-b")
 	if _, err := Load([]byte("api-keys:\n  - value: ${TEST_MM_SPLIT_KEY}\n")); err == nil || !strings.Contains(err.Error(), "newlines") {

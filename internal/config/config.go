@@ -362,6 +362,10 @@ func PublicID(c Config, upstreamID string) string {
 	return upstreamID
 }
 
+// validate checks a decoded config after defaults and ${VAR} expansion.
+// API-key values must be non-empty, unique and free of CR/LF, because each
+// value is sent as an upstream header. Errors name the field and never echo
+// a key value.
 func (c Config) validate() error {
 	if err := validateProtocols("protocols", c.Protocols, false); err != nil {
 		return err
