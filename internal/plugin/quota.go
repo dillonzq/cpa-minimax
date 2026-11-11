@@ -51,6 +51,10 @@ func (m *Manager) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchReques
 	m.mu.RLock()
 	cfg := m.cfg
 	m.mu.RUnlock()
+	if len(cfg.APIKeys) == 0 {
+		// Idle: no upstream requests, even for manual records.
+		return empty, fmt.Errorf("minimax plugin is idle: no api-keys configured")
+	}
 	entry, err := resolveCredential(cfg, key, req.Attributes["region"], req.Attributes["key_type"], req.Attributes["base_url"])
 	if err != nil {
 		return empty, err

@@ -387,3 +387,37 @@ func TestCleanupDiscoversUnlistedAndNestedFiles(t *testing.T) {
 		}
 	}
 }
+
+// Idle must not reach upstream even through a manual record and a built-in
+// model, which minimax otherwise serves without a matching config entry.
+func TestKeylessIdleBlocksUpstreamOperations(t *testing.T) {
+	m, f := newTestManager(catalogResponder(true, testCatalogJSON))
+	for _, settings := range []string{testValidYAML, "api-keys: []\n"} {
+		if env := decodeEnv(t, mustHandle(t, m, pluginabi.MethodPluginReconfigure, lifecycleRequestBody(settings))); !env.OK {
+			t.Fatalf("lifecycle failed: %+v", env.Error)
+		}
+	}
+	requests := len(f.callsOf(pluginabi.MethodHostHTTPDo))
+	manual := map[string]string{"api_key": "sk-cp-manual", "region": "cn", "key_type": "subscription"}
+	body := `{"model":"x","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}`
+	for _, stream := range []bool{false, true} {
+		if env := executeAs(t, m, manual, "minimax/MiniMax-M3", "claude", body, stream); env.OK {
+			t.Fatalf("idle execution succeeded (stream=%t)", stream)
+		}
+	}
+	if env := decodeEnv(t, mustHandle(t, m, pluginabi.MethodExecutorCountTokens, countTokensRequest("minimax/MiniMax-M3", "claude", body))); env.OK {
+		t.Fatal("idle token counting succeeded")
+	}
+	if _, err := m.FetchQuota(context.Background(), pluginapi.QuotaFetchRequest{Provider: ProviderID, Attributes: manual}); err == nil {
+		t.Fatal("idle quota fetch succeeded")
+	}
+	if got := len(f.callsOf(pluginabi.MethodHostHTTPDo)) + len(f.callsOf(pluginabi.MethodHostHTTPDoStream)); got != requests {
+		t.Fatal("idle plugin contacted upstream")
+	}
+	if env := decodeEnv(t, mustHandle(t, m, pluginabi.MethodPluginReconfigure, lifecycleRequestBody(testValidYAML))); !env.OK {
+		t.Fatalf("resume failed: %+v", env.Error)
+	}
+	if env := executeAs(t, m, manual, "minimax/MiniMax-M3", "claude", body, false); !env.OK {
+		t.Fatalf("execution after adding keys failed: %+v", env.Error)
+	}
+}

@@ -368,7 +368,13 @@ func (m *Manager) handleLifecycle(request []byte) ([]byte, error) {
 	if refreshErr != nil && cfg.Catalog.StaleWhileUnavailable && m.mgr != nil {
 		mgr.SeedFrom(m.mgr)
 	}
-	m.mgr = mgr
+	// Idle installs no catalog, so built-in and declared models are neither
+	// published nor routable: execution and token counting fail before any
+	// upstream request, including for manual records.
+	m.mgr = nil
+	if configured {
+		m.mgr = mgr
+	}
 	stop, done := make(chan struct{}), make(chan struct{})
 	m.stop, m.done = stop, done
 	interval := cfg.Catalog.RefreshInterval
@@ -455,10 +461,9 @@ func (m *Manager) materializeAuthRecords(ctx context.Context, cfg config.Config)
 func (m *Manager) handleModels() ([]byte, error) {
 	m.mu.RLock()
 	mgr := m.mgr
-	configured := len(m.cfg.APIKeys) > 0
 	m.mu.RUnlock()
 	models := make([]pluginapi.ModelInfo, 0)
-	if mgr != nil && configured {
+	if mgr != nil {
 		for _, rec := range mgr.Models() {
 			models = append(models, pluginapi.ModelInfo{
 				ID:                        rec.PublicID,
