@@ -2,6 +2,8 @@ package plugin
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -25,6 +27,13 @@ type authRecord struct {
 	Region  string `json:"region,omitempty"`
 	KeyType string `json:"key_type,omitempty"`
 	BaseURL string `json:"base_url,omitempty"`
+}
+
+// credentialID is the stable, non-secret identity of a plugin-created record.
+// Cleanup deletes only records whose stored ID matches their own key this way.
+func credentialID(key string) string {
+	digest := sha256.Sum256([]byte(key))
+	return authIDPrefix + hex.EncodeToString(digest[:])
 }
 
 type authProvider struct{ cfg config.Config }

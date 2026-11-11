@@ -112,7 +112,7 @@ CPA 在最高 `priority` 的可用凭证中轮换。默认订阅 key 为 `1`，A
 
 插件负责分类 MiniMax 错误，CPA 负责重试和冷却。通过 CPA 管理接口设置的文件级 `priority` 优先于插件值；配置中的优先级变更在 CPA 重新解析凭证后生效，例如重启后。
 
-配置中的 key 会生成 CPA 凭证文件。从 YAML 删除 key **不会**删除对应文件，请通过 CPA 管理接口删除。命名、字段优先级及手动添加方法见[凭证文件](docs/configuration.zh-CN.md#凭证文件)。
+配置中的 key 会生成 CPA 凭证文件。从 YAML 删除 key 后，下一次注册或重新配置成功时，插件会删除它为该 key 创建的文件；手动添加的记录会保留。清空或省略 `api-keys` 时插件进入空闲状态，不请求上游、不发布模型；之后添加 key 即可恢复，无需重启。命名、字段优先级、手动添加及清理规则见[凭证文件](docs/configuration.zh-CN.md#凭证文件)。
 
 ## 模型
 
@@ -192,11 +192,11 @@ M2.5 和 M2.7 默认不发布，仅在发现结果包含它们或通过 `models`
 | 现象 | 检查项 |
 |---|---|
 | 插件或模型未出现 | 库文件系统/架构是否匹配、两个 `enabled` 开关、启动日志及 `model-prefix`。 |
-| `invalid_config` | 拼错或未知的配置项；至少一个非空且不重复的 key；变量是否对 CPA 进程可见；未启用 `allow-http` 时必须使用 HTTPS。 |
+| `invalid_config` | 拼错或未知的配置项；key 非空且不重复；变量是否对 CPA 进程可见；未启用 `allow-http` 时必须使用 HTTPS。 |
 | 1004 或持续 401 | key 是否有效、所属站点是否正确、全局或单 key 地址覆盖是否指向正确站点。 |
 | 只有内置模型 | 检查发现日志及 `/v1/models` 权限；发现优先使用 API key。 |
 | API key 没有额度桶 | 正常行为，按量 key 只显示计划。 |
-| YAML 删除 key 后仍显示 | 通过 CPA 管理接口删除保留的凭证文件。 |
+| YAML 删除 key 后仍显示 | 检查 CPA 日志中的清理告警并重载重试；手动添加的记录按设计保留。如告警提到 `*.minimax-cleanup-*` 文件，请手动恢复。 |
 | 流以 `stream exceeded stream-idle-timeout` 或 `stream exceeded max-stream-duration` 结束 | 上游连续 `stream-idle-timeout` 未发送数据块，或流达到 `max-stream-duration`；调大对应配置。`request-timeout` 只限制流的建立，见[配置项](docs/configuration.zh-CN.md#配置项)。 |
 
 可复现问题请附脱敏配置、请求、版本和日志，提交 [issue](https://github.com/dillonzq/cpa-minimax/issues/new/choose)；漏洞请[私下报告](SECURITY.md)。

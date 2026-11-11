@@ -92,7 +92,7 @@ Only key `value` fields expand `${ENV_VAR}`; `base-url` and other fields do not.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `api-keys` | `[]object` | *(required)* | Keys with `value` and optional `name`, `type`, `region`, `base-url`, `priority`. `value` supports `${ENV_VAR}`. Duplicates and empty values are rejected. |
+| `api-keys` | `[]object` | `[]` | Keys with `value` and optional `name`, `type`, `region`, `base-url`, `priority`. `value` supports `${ENV_VAR}`. Duplicates and empty values are rejected. An empty list leaves the plugin idle; see [Credential files](#credential-files). |
 | `api-keys[].name` | `string` | generated label | Optional display name and initial credential filename. |
 | `api-keys[].type` | `string` | by prefix | `subscription` or `api`; see [Credential types](../README.md#credential-types). |
 | `api-keys[].region` | `string` | `region` | `global` or `cn`. |
@@ -159,7 +159,15 @@ On start and reconfiguration, the plugin creates one CPA credential file per con
 {"type": "minimax", "label": "Team plan", "api_key": "sk-cp-...", "region": "cn", "key_type": "subscription"}
 ```
 
-For a key that is also configured, the configuration's `region`, `type`, `base-url`, and `priority` win over the record’s fields, including when the configured field takes a default value. Removing a key from the configuration does not delete its file; delete it through CPA management.
+For a key that is also configured, the configuration's `region`, `type`, `base-url`, and `priority` win over the record’s fields, including when the configured field takes a default value.
+
+### Removing keys
+
+After each successful registration or reconfiguration, the plugin deletes the credential files it created for keys that are no longer configured. A file is treated as plugin-created only when its `type` is `minimax` and its `id` is `minimax-key-<sha256 of api_key>`, which the plugin writes; manual records (no `id` or a different one), malformed, foreign, and symlinked files are never touched. Manual records keep working as before while at least one key is configured.
+
+An empty or omitted `api-keys` list removes every plugin-created credential and leaves the plugin idle: it registers, but makes no upstream requests, runs no catalog refresh, and publishes no models, so manual records are unused until keys are added again. Adding keys later resumes normal operation without restarting CPA. Removed credentials lose their stored metadata and are created with defaults if added again; configured credentials keep their state. Plugin shutdown, upgrades, and restarts never delete configured credentials.
+
+Cleanup scans the auth directories CPA reports, recursively and including files missing from CPA’s in-memory list, and reuses the last reported directories when that list is temporarily empty. A cold start where CPA reports no file paths cannot locate the directory through the current SDK. JSON extensions are matched case-insensitively. For a loaded credential, the plugin first writes `disabled: true` and waits for CPA’s file watcher to report that file as disabled before deleting it; a missing runtime entry does not count as confirmation. When confirmation or file access fails, a warning asks for another reload. If the original filename cannot be restored safely, the record is kept in a `*.minimax-cleanup-*` file for manual recovery.
 
 YAML uses `base-url` and `type: subscription|api`; credential JSON uses `base_url` and `key_type`, while JSON `type` must be `minimax`. Existing files and CPA-managed metadata are not overwritten on reconfiguration. A `priority` set directly on the credential file takes precedence over the plugin’s priority attribute.
 
