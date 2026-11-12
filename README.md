@@ -112,7 +112,7 @@ CPA selects available credentials with the highest `priority`, rotating within t
 
 The plugin classifies MiniMax failures; CPA owns retries and cooldowns. A file-level `priority` set through CPA management overrides the plugin value. Configuration priority changes take effect when CPA reparses credentials, for example after a restart.
 
-Configured keys are materialized as CPA credential files. Removing a key from YAML does **not** delete its file; remove it through CPA management. See [Credential files](docs/configuration.md#credential-files) for names, field precedence, and manual records.
+Configured keys are materialized as CPA credential files. Removing a key from YAML deletes the file the plugin created for it on the next successful registration or reconfiguration; manually added records are kept. An empty or omitted `api-keys` list leaves the plugin idle, with no upstream requests or published models, and adding keys later resumes it without a restart. See [Credential files](docs/configuration.md#credential-files) for names, field precedence, manual records, and cleanup.
 
 ## Models
 
@@ -192,11 +192,11 @@ Check the CPA log and the selected credential’s type, region, and resolved add
 | Symptom | What to check |
 |---|---|
 | Plugin or models missing | Library OS/architecture, both `enabled` switches, startup logs, and `model-prefix`. |
-| `invalid_config` | Misspelled or unknown settings; at least one unique, non-empty key; variables visible to the CPA process; HTTPS URLs unless `allow-http: true`. |
+| `invalid_config` | Misspelled or unknown settings; unique, non-empty keys; variables visible to the CPA process; HTTPS URLs unless `allow-http: true`. |
 | 1004 or repeated 401 | Key validity, its site, and any shared/per-key address override. |
 | Only built-in models appear | Discovery logs and permission to list `/v1/models`; an API key is preferred for discovery. |
 | No quota buckets for an API key | Expected: pay-as-you-go credentials report the plan only. |
-| Deleted YAML key still appears | Delete its retained credential file through CPA management. |
+| Deleted YAML key still appears | Check the CPA log for a cleanup warning and reload to retry; a manually added record is kept by design. Recover any `*.minimax-cleanup-*` file the warning mentions. |
 | Stream ends with `stream exceeded stream-idle-timeout` or `stream exceeded max-stream-duration` | The upstream sent no chunk for `stream-idle-timeout`, or the stream reached `max-stream-duration`; raise the matching setting. `request-timeout` only bounds a stream's opening; see [Configuration options](docs/configuration.md#configuration-options). |
 
 For a reproducible bug, open an [issue](https://github.com/dillonzq/cpa-minimax/issues/new/choose) with sanitized config, request, versions, and logs. Report vulnerabilities [privately](SECURITY.md).

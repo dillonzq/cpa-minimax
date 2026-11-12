@@ -470,7 +470,6 @@ func TestLoadRejections(t *testing.T) {
 		{"invalid yaml syntax", "[unclosed", "decode config"},
 		{"unknown anchor has no line info", "request-timeout: *nope\n", "decode config: invalid YAML structure"},
 		{"bare-scalar api key never leaks", "api-keys:\n  - sk-live-secret-123\n", "decode config: invalid YAML structure"},
-		{"keyless config rejected", "", "api-keys: at least one key is required"},
 		{"unknown default region", "region: us\n" + withKey, `region: must be "global" or "cn"`},
 		{"unknown key region", "api-keys:\n  - value: a\n    region: eu\n", `api-keys[0].region: must be "global" or "cn"`},
 		{"unknown key type", "api-keys:\n  - value: a\n    type: free\n", `api-keys[0].type: must be "subscription" or "api"`},
@@ -656,5 +655,18 @@ func TestKeyExpandsOnlyBracedEnvRefs(t *testing.T) {
 	}
 	if c.APIKeys[0].Value != "ab$cd12" || c.APIKeys[1].Value != "from-env" {
 		t.Fatalf("keys = %q, %q", c.APIKeys[0].Value, c.APIKeys[1].Value)
+	}
+}
+
+// An empty or omitted key list loads; the plugin then registers idle.
+func TestLoadAllowsKeylessConfig(t *testing.T) {
+	for _, text := range []string{"", "api-keys: []\n", "api-keys: null\n"} {
+		cfg, err := Load([]byte(text))
+		if err != nil || len(cfg.APIKeys) != 0 {
+			t.Fatalf("Load(%q) = %d keys, %v", text, len(cfg.APIKeys), err)
+		}
+	}
+	if _, err := Load([]byte("api-keys:\n  - value: \"\"\n")); err == nil {
+		t.Fatal("empty key value accepted")
 	}
 }

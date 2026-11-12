@@ -92,7 +92,7 @@ api-keys:
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `api-keys` | `[]object` | *（必填）* | 包含 `value` 及可选 `name`、`type`、`region`、`base-url`、`priority`。`value` 支持 `${ENV_VAR}`；重复值和空值被拒绝。 |
+| `api-keys` | `[]object` | `[]` | 包含 `value` 及可选 `name`、`type`、`region`、`base-url`、`priority`。`value` 支持 `${ENV_VAR}`；重复值和空值被拒绝。空列表使插件进入空闲状态，见[凭证文件](#凭证文件)。 |
 | `api-keys[].name` | `string` | 自动生成 | 可选显示名称及初次生成的凭证文件名。 |
 | `api-keys[].type` | `string` | 按前缀 | `subscription` 或 `api`；见[凭证类型](../README.zh-CN.md#凭证类型)。 |
 | `api-keys[].region` | `string` | `region` | `global` 或 `cn`。 |
@@ -159,7 +159,15 @@ models:
 {"type": "minimax", "label": "团队套餐", "api_key": "sk-cp-...", "region": "cn", "key_type": "subscription"}
 ```
 
-对于同时出现在配置中的 key，配置里的 `region`、`type`、`base-url`、`priority` 优先于文件内对应字段，包括配置采用默认值的情况。从配置中删除 key 不会删除其文件，请通过 CPA 管理接口删除。
+对于同时出现在配置中的 key，配置里的 `region`、`type`、`base-url`、`priority` 优先于文件内对应字段，包括配置采用默认值的情况。
+
+### 删除 key
+
+每次注册或重新配置成功后，插件会删除它为已不在配置中的 key 创建的凭证文件。只有 `type` 为 `minimax` 且 `id` 为 `minimax-key-<api_key 的 sha256>`（插件写入的格式）的文件才视为插件创建；手动记录（无 `id` 或 `id` 不同）、格式异常、其他 provider 及符号链接文件均不会改动。只要至少配置了一个 key，手动记录照常可用。
+
+清空或省略 `api-keys` 会删除所有插件创建的凭证，并进入空闲状态：插件仍会注册，但不请求上游、不刷新目录、不发布模型；执行、token 计数和额度查询都会被拒绝，因此在重新添加 key 前手动记录也不会被使用。之后添加 key 即可恢复，无需重启 CPA。被删除的凭证会丢失已有元数据，重新添加时按默认状态创建；仍在配置中的凭证保留原有状态。关闭插件、升级或重启都不会删除仍在配置中的凭证。
+
+清理会递归扫描 CPA 报告的凭证目录，包含 CPA 内存列表遗漏的文件；列表暂时为空时复用最近报告的目录。若冷启动时 CPA 未报告任何文件路径，当前 SDK 无法确定凭证目录。JSON 扩展名不区分大小写。对于已加载的凭证，插件先写入 `disabled: true`，等待 CPA 文件监听明确报告该文件已禁用后再删除；运行时记录暂时缺失不视为确认。确认或文件操作失败时记录告警，可再次重载重试；若无法安全恢复原文件名，记录会保留在 `*.minimax-cleanup-*` 文件中以供手动恢复。
 
 YAML 使用 `base-url` 和 `type: subscription|api`；凭证 JSON 使用 `base_url` 和 `key_type`，JSON 的 `type` 必须为 `minimax`。重新配置不会覆盖现有文件及 CPA 管理的元数据；直接在凭证文件中设置的 `priority` 优先于插件提供的默认属性。
 

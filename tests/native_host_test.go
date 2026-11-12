@@ -82,6 +82,9 @@ func TestNativeHostABI(t *testing.T) {
 	// testdata is ignored by ./... in this repository. The overlay makes the
 	// same standard Go test file a member of the real SDK's pluginhost package.
 	replacements[filepath.Join(hostDir, "internal", "pluginhost", "minimax_native_test.go")] = filepath.Join(root, "tests", "testdata", "pluginhost", "native_host_abi_test.go")
+	// Credential cleanup needs CPA's real watcher, which imports pluginhost,
+	// so that test joins the management package instead.
+	replacements[filepath.Join(hostDir, "internal", "api", "handlers", "management", "minimax_cleanup_test.go")] = filepath.Join(root, "tests", "testdata", "management", "native_cleanup_test.go")
 	overlay, err := json.Marshal(struct{ Replace map[string]string }{Replace: replacements})
 	if err != nil {
 		t.Fatal(err)
@@ -99,6 +102,10 @@ func TestNativeHostABI(t *testing.T) {
 		// A fresh process for each load: C-shared Go runtimes need not support
 		// unloading/reinitializing the same library in a single host process.
 		out := run(hostDir, "test", "-overlay", overlayPath, "-tags", "debug", "./internal/pluginhost", "-run", "^"+name+"$", "-count=1", "-timeout=90s", "-v")
+		t.Logf("%s", out)
+	}
+	if name := "TestMiniMaxNativeCredentialCleanup"; only == "" || name == only {
+		out := run(hostDir, "test", "-overlay", overlayPath, "-tags", "debug", "./internal/api/handlers/management", "-run", "^"+name+"$", "-count=1", "-timeout=90s", "-v")
 		t.Logf("%s", out)
 	}
 }
