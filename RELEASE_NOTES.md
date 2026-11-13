@@ -1,3 +1,37 @@
+# v0.2.3
+
+Clean up credentials for removed keys and allow the plugin to start without
+configured keys. Requires **CLIProxyAPI v8.0.0 or later**.
+
+## Behavior changes
+
+- After a successful registration or reconfiguration, removing a key from
+  `api-keys` now deletes the credential file the plugin created for it. Only
+  MiniMax records with the plugin's key-derived ID are eligible; manually
+  added records are kept. Loaded credentials are disabled and confirmed by
+  CPA's file watcher before deletion. Failed cleanup logs a warning and is
+  retried on the next reload.
+- An empty or omitted `api-keys` list is now valid. The plugin registers idle,
+  makes no upstream requests, runs no catalog refresh, and publishes no
+  models. Execution, token counting, and quota lookups are rejected while
+  idle, including for manual records. Adding keys resumes normal operation
+  without restarting CPA.
+
+## Upgrade
+
+Download `cpa-minimax_0.2.3_<os>_<arch>.zip` for your CPA host and verify it
+against `checksums.txt`. Stop CPA and back up the credential directory before
+replacing the plugin library, then restart CPA. Check `api-keys` first:
+plugin-created credentials for keys absent from that list are now removed,
+and restoring a key later creates its credential with default metadata.
+Configured credentials keep their existing state.
+
+Cleanup needs credential paths reported by CPA; a cold start with no reported
+paths cannot locate old files. If cleanup logs a warning, reload to retry and
+check for any `*.minimax-cleanup-*` file requiring manual recovery. See
+[Credential files](https://github.com/dillonzq/cpa-minimax/blob/v0.2.3/docs/configuration.md#credential-files)
+for details.
+
 # v0.2.2
 
 Stop `request-timeout` from cutting off active streams, and count tokens for
